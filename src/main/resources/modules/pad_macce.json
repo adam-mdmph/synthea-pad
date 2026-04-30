@@ -1,0 +1,1273 @@
+{
+  "name": "PAD Open Lower Extremity Revascularization with MACCE",
+  "remarks": [
+    "Models the full clinical pathway for peripheral arterial disease (PAD) from initial",
+    "diagnosis through treatment strategy selection, and — for patients who receive open",
+    "lower extremity revascularization — through the 30-day MACCE outcome window.",
+    "",
+    "This module was derived from pad_ssi.json by replacing the SSI preoperative",
+    "comorbidity block with the 25 model-derived preoperative features from",
+    "covariates/covariate_concepts.csv (sourced from model/varImp.rds), and replacing",
+    "the SSI outcome states with the five MACCE components.",
+    "",
+    "Clinical workflow:",
+    "  1a. PAD onset delay: Uniform(0, 20) years after age 60 (onset age 60-80)",
+    "  1b. PAD diagnosis (ConditionOnset) — capped at age 90",
+    "  2. Outpatient PAD diagnosis encounter",
+    "  3. Document presenting symptom (asymptomatic, claudication, rest pain, wound/tissue loss)",
+    "  4. Document preoperative features (cardiac conditions, antiplatelet/cardiac drugs,",
+    "     and key laboratory measurements) derived from model covariate importance",
+    "  5. Ankle-brachial index (ABI) measurement",
+    "  6. End outpatient encounter",
+    "  7. Treatment strategy decision:",
+    "       - Medical management (10%) → Terminal",
+    "       - Endovascular revascularization (10%) → Terminal",
+    "       - Open surgical revascularization (80%) → MACCE pathway",
+    "  8. Pre-surgical workup delay (1-6 months)",
+    "  9. Urgency flag (25% urgent/emergent)",
+    " 10. Inpatient surgical admission → perioperative cefazolin → open revascularization",
+    " 11. Post-operative inpatient stay (3-7 days) → discharge",
+    " 12. MACCE risk check → outcome pathway or Terminal",
+    "",
+    "Cohort definitions:",
+    "  Target  : inpatient surgery for open lower extremity revascularization",
+    "  Outcome : MACCE (MI, cardiac arrest, heart failure, stroke, or death) within 30 days",
+    "",
+    "MACCE incidence assumptions:",
+    "  Fixed MACCE incidence after open surgery: 15%",
+    "  MACCE component distribution (of all MACCE cases):",
+    "    Myocardial infarction  (SNOMED 22298006)  : 30%",
+    "    Cardiac arrest         (SNOMED 410429000) : 15%",
+    "    Heart failure          (SNOMED 84114007)  : 25%",
+    "    Stroke/cerebral infarct(SNOMED 432504007) : 20%",
+    "    Cardiac death          (SNOMED 95281009)  : 10%",
+    "",
+    "Preoperative covariate prevalence assumptions (from model/varImp.rds, covariates/covariates.csv):",
+    "  Conditions (prevalence in this PAD surgical population):",
+    "    Ischemic heart disease     : 45%",
+    "    Angina pectoris            : 20%",
+    "    Heart failure              : 15%",
+    "    Cerebral infarction        : 10%",
+    "    Myocardial infarction      : 15%",
+    "    Congestive heart failure   : 15%",
+    "    Myocardial disease         : 10%",
+    "    Chest pain                 : 25%",
+    "    Brain injury               : 5%",
+    "    Structural heart disorder  : 20%",
+    "  Drugs (prevalence):",
+    "    Clopidogrel                : 30%",
+    "    Cardiac vasodilators       : 25%",
+    "    Antithrombotic agents      : 50%",
+    "    Beta blockers              : 40%",
+    "    Aspirin                    : 55%",
+    "    Organic nitrates           : 20%",
+    "  Measurements: all generated as continuous ranges consistent with PAD patient norms",
+    "",
+    "Primary concept codes (OMOP-mappable):",
+    "  PAD condition                  : SNOMED-CT 399957001",
+    "  Femoro-popliteal bypass        : SNOMED-CT 112828007",
+    "  Femoral endarterectomy         : SNOMED-CT 16589005",
+    "  Aortobifemoral bypass          : SNOMED-CT 405482000",
+    "  Femoro-tibial bypass           : SNOMED-CT 47575002",
+    "  Extra-anatomic bypass          : SNOMED-CT 73985009",
+    "  Ischemic heart disease         : SNOMED-CT 414545008",
+    "  Angina pectoris                : SNOMED-CT 194828000",
+    "  Heart failure                  : SNOMED-CT 84114007",
+    "  Cerebral infarction            : SNOMED-CT 432504007",
+    "  Myocardial infarction          : SNOMED-CT 22298006",
+    "  Congestive heart failure       : SNOMED-CT 42343007",
+    "  Myocardial disease             : SNOMED-CT 57809008",
+    "  Chest pain (cardiac)           : SNOMED-CT 29857009",
+    "  Brain injury                   : SNOMED-CT 127295002",
+    "  Structural heart disorder      : SNOMED-CT 128599005",
+    "  Cardiac arrest (MACCE outcome) : SNOMED-CT 410429000",
+    "  Cardiac death  (MACCE outcome) : SNOMED-CT 95281009",
+    "  Stroke (MACCE outcome)         : SNOMED-CT 432504007",
+    "  Ankle-brachial index           : LOINC      77194-9",
+    "  CK-MB mass                     : LOINC      13969-1",
+    "  Neutrophil %                   : LOINC      770-8",
+    "  Serum creatinine               : LOINC      2160-0",
+    "  Hemoglobin                     : LOINC      718-7",
+    "  Total cholesterol              : LOINC      2093-3",
+    "  WBC count                      : LOINC      6690-2",
+    "  hsCRP                          : LOINC      30522-7",
+    "  HbA1c (HPLC)                   : LOINC      17856-6",
+    "  Platelet count                 : LOINC      777-3",
+    "  Clopidogrel                    : RxNorm     749196",
+    "  Aspirin                        : RxNorm     1191",
+    "  Nitroglycerin (nitrate)        : RxNorm     4917",
+    "  Cefazolin (ppx)                : RxNorm     2180",
+    "",
+    "Timing:",
+    "  Pre-surgical workup delay : 1-6 months after PAD diagnosis",
+    "  Inpatient stay            : 3-7 days post-surgery",
+    "  MACCE outcome window      : 0-30 days post-surgery (inside or shortly after admission)",
+    "",
+    "Usage:",
+    "  Copy to <synthea_home>/src/main/resources/modules/ and run Synthea normally.",
+    "  To load into the omop_synth database, run this project's Step 5 CSV-to-OMOP ETL workflow.",
+    "",
+    "Does NOT model: mortality beyond cardiac death MACCE component, limb loss, or graft failure."
+  ],
+  "states": {
+
+    "Initial": {
+      "type": "Initial",
+      "direct_transition": "Age_Guard"
+    },
+
+    "Age_Guard": {
+      "type": "Guard",
+      "allow": {
+        "condition_type": "Age",
+        "operator": ">=",
+        "quantity": 60,
+        "unit": "years"
+      },
+      "direct_transition": "PAD_Onset_Delay"
+    },
+
+    "PAD_Onset_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "PAD onset delay: Uniform(0, 20) years after age 60 (onset age 60-80).",
+        "Age_90_Check ensures no procedure occurs on patients over age 90."
+      ],
+      "range": {
+        "low": 0,
+        "high": 20,
+        "unit": "years"
+      },
+      "direct_transition": "Age_90_Check"
+    },
+
+    "Age_90_Check": {
+      "type": "Simple",
+      "remarks": [
+        "Cap the PAD pathway at age 90. Patients older than 90 after the",
+        "onset delay are routed to Terminal so procedure ages stay realistic."
+      ],
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Age",
+            "operator": "<=",
+            "quantity": 90,
+            "unit": "years"
+          },
+          "transition": "PAD_Onset"
+        },
+        {
+          "transition": "Terminal"
+        }
+      ]
+    },
+
+    "PAD_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "399957001",
+          "display": "Peripheral arterial occlusive disease"
+        }
+      ],
+      "direct_transition": "PAD_Diagnosis_Encounter"
+    },
+
+    "PAD_Diagnosis_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "outpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "185349003",
+          "display": "Encounter for check up"
+        }
+      ],
+      "remarks": [
+        "Initial outpatient PAD evaluation encounter.",
+        "Presenting symptom, preoperative comorbidities, and ABI documented here."
+      ],
+      "direct_transition": "Presenting_Symptom"
+    },
+
+    "Presenting_Symptom": {
+      "type": "Simple",
+      "remarks": [
+        "Documents presenting symptom / Rutherford class at first evaluation.",
+        "Rutherford 0: asymptomatic (10%)",
+        "Rutherford 1-3: claudication (50%)",
+        "Rutherford 4: rest pain (25%)",
+        "Rutherford 5-6: wound / tissue loss (15%)"
+      ],
+      "distributed_transition": [
+        { "distribution": 0.10, "transition": "Symptom_Asymptomatic" },
+        { "distribution": 0.50, "transition": "Symptom_Claudication" },
+        { "distribution": 0.25, "transition": "Symptom_Rest_Pain" },
+        { "distribution": 0.15, "transition": "Symptom_Wound" }
+      ]
+    },
+
+    "Symptom_Asymptomatic": {
+      "type": "Observation",
+      "category": "survey",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "84387000",
+          "display": "Asymptomatic"
+        }
+      ],
+      "direct_transition": "IHD_Chance"
+    },
+
+    "Symptom_Claudication": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "63491006",
+          "display": "Intermittent claudication"
+        }
+      ],
+      "direct_transition": "IHD_Chance"
+    },
+
+    "Symptom_Rest_Pain": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "428171009",
+          "display": "Peripheral vascular disease with rest pain"
+        }
+      ],
+      "direct_transition": "IHD_Chance"
+    },
+
+    "Symptom_Wound": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "238794007",
+          "display": "Ischemic foot ulcer"
+        }
+      ],
+      "direct_transition": "IHD_Chance"
+    },
+
+    "IHD_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Ischemic heart disease — top-ranked model covariate (covariateValue ~0.0097).",
+        "Prevalence 45% in this PAD surgical population.",
+        "SNOMED-CT 414545008 = Ischemic heart disease (OMOP concept 4185932, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.45, "transition": "IHD_Onset" },
+        { "distribution": 0.55, "transition": "Angina_Chance" }
+      ]
+    },
+
+    "IHD_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "414545008",
+          "display": "Ischemic heart disease"
+        }
+      ],
+      "direct_transition": "Angina_Chance"
+    },
+
+    "Angina_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Angina pectoris — second-ranked model covariate (covariateValue ~0.0061).",
+        "Prevalence 20%.",
+        "SNOMED-CT 194828000 = Angina pectoris (OMOP concept 321318, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.20, "transition": "Angina_Onset" },
+        { "distribution": 0.80, "transition": "Heart_Failure_Chance" }
+      ]
+    },
+
+    "Angina_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "194828000",
+          "display": "Angina pectoris"
+        }
+      ],
+      "direct_transition": "Heart_Failure_Chance"
+    },
+
+    "Heart_Failure_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Heart failure — model covariate rank 3 (covariateValue ~0.0044).",
+        "Prevalence 15%.",
+        "SNOMED-CT 84114007 = Heart failure (OMOP concept 316139, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.15, "transition": "Heart_Failure_Onset" },
+        { "distribution": 0.85, "transition": "Cerebral_Infarction_Chance" }
+      ]
+    },
+
+    "Heart_Failure_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "84114007",
+          "display": "Heart failure"
+        }
+      ],
+      "direct_transition": "Cerebral_Infarction_Chance"
+    },
+
+    "Cerebral_Infarction_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Cerebral infarction — model covariate rank 4 (covariateValue ~0.0048).",
+        "Prevalence 10%.",
+        "SNOMED-CT 432504007 = Cerebral infarction (OMOP concept 443454, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.10, "transition": "Cerebral_Infarction_Onset" },
+        { "distribution": 0.90, "transition": "MI_History_Chance" }
+      ]
+    },
+
+    "Cerebral_Infarction_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "432504007",
+          "display": "Cerebral infarction"
+        }
+      ],
+      "direct_transition": "MI_History_Chance"
+    },
+
+    "MI_History_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Prior myocardial infarction — model covariate (OMOP concept 4329847).",
+        "Prevalence 15%.",
+        "SNOMED-CT 22298006 = Myocardial infarction (OMOP concept 4329847, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.15, "transition": "MI_History_Onset" },
+        { "distribution": 0.85, "transition": "CHF_Chance" }
+      ]
+    },
+
+    "MI_History_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "22298006",
+          "display": "Myocardial infarction"
+        }
+      ],
+      "direct_transition": "CHF_Chance"
+    },
+
+    "CHF_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Congestive heart failure — model covariate (OMOP concept 319835).",
+        "Prevalence 15%. Separate from Heart_Failure_Chance above (concept 316139).",
+        "SNOMED-CT 42343007 = Congestive heart failure (OMOP concept 319835, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.15, "transition": "CHF_Onset" },
+        { "distribution": 0.85, "transition": "Myocardial_Disease_Chance" }
+      ]
+    },
+
+    "CHF_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "42343007",
+          "display": "Congestive heart failure"
+        }
+      ],
+      "direct_transition": "Myocardial_Disease_Chance"
+    },
+
+    "Myocardial_Disease_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Myocardial disease — model covariate (OMOP concept 4239975).",
+        "Prevalence 10%.",
+        "SNOMED-CT 57809008 = Myocardial disease (OMOP concept 4239975, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.10, "transition": "Myocardial_Disease_Onset" },
+        { "distribution": 0.90, "transition": "Chest_Pain_Chance" }
+      ]
+    },
+
+    "Myocardial_Disease_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "57809008",
+          "display": "Myocardial disease"
+        }
+      ],
+      "direct_transition": "Chest_Pain_Chance"
+    },
+
+    "Chest_Pain_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Chest pain — model covariate (OMOP concept 77670).",
+        "Prevalence 25%.",
+        "SNOMED-CT 29857009 = Chest pain (OMOP concept 77670, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.25, "transition": "Chest_Pain_Onset" },
+        { "distribution": 0.75, "transition": "Brain_Injury_Chance" }
+      ]
+    },
+
+    "Chest_Pain_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "29857009",
+          "display": "Chest pain"
+        }
+      ],
+      "direct_transition": "Brain_Injury_Chance"
+    },
+
+    "Brain_Injury_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Traumatic or non-traumatic brain injury — model covariate (OMOP concept 4133611).",
+        "Prevalence 5%.",
+        "SNOMED-CT 127295002 = Traumatic brain injury (OMOP concept 4133611, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.05, "transition": "Brain_Injury_Onset" },
+        { "distribution": 0.95, "transition": "Structural_Heart_Disorder_Chance" }
+      ]
+    },
+
+    "Brain_Injury_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "127295002",
+          "display": "Traumatic brain injury"
+        }
+      ],
+      "direct_transition": "Structural_Heart_Disorder_Chance"
+    },
+
+    "Structural_Heart_Disorder_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Structural disorder of heart — model covariate (OMOP concept 4027255).",
+        "Prevalence 20%.",
+        "SNOMED-CT 128599005 = Structural disorder of heart (OMOP concept 4027255, standard)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.20, "transition": "Structural_Heart_Disorder_Onset" },
+        { "distribution": 0.80, "transition": "Clopidogrel_Chance" }
+      ]
+    },
+
+    "Structural_Heart_Disorder_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "128599005",
+          "display": "Structural disorder of heart"
+        }
+      ],
+      "direct_transition": "Clopidogrel_Chance"
+    },
+
+    "Clopidogrel_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Clopidogrel — top-ranked drug covariate (OMOP concept 1322184, RxNorm 749196).",
+        "Prevalence 30%.",
+        "Started during evaluation encounter to represent pre-index antiplatelet therapy."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.30, "transition": "Clopidogrel_Order" },
+        { "distribution": 0.70, "transition": "Cardiac_Vasodilator_Chance" }
+      ]
+    },
+
+    "Clopidogrel_Order": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "clopidogrel_preop",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "749196",
+          "display": "clopidogrel 75 MG Oral Tablet"
+        }
+      ],
+      "direct_transition": "Cardiac_Vasodilator_Chance"
+    },
+
+    "Cardiac_Vasodilator_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Cardiac vasodilators (ATC C01D, OMOP concept 21600315).",
+        "Prevalence 25%.",
+        "Represented via nitroglycerin as the most common agent in this class."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.25, "transition": "Cardiac_Vasodilator_Order" },
+        { "distribution": 0.75, "transition": "Antithrombotic_Chance" }
+      ]
+    },
+
+    "Cardiac_Vasodilator_Order": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "cardiac_vasodilator_preop",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "4917",
+          "display": "nitroglycerin"
+        }
+      ],
+      "direct_transition": "Antithrombotic_Chance"
+    },
+
+    "Antithrombotic_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Antithrombotic agents (ATC B01A, OMOP concept 21600961).",
+        "Prevalence 50%.",
+        "Represented via heparin as a common broad antithrombotic in this class."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.50, "transition": "Antithrombotic_Order" },
+        { "distribution": 0.50, "transition": "Beta_Blocker_Chance" }
+      ]
+    },
+
+    "Antithrombotic_Order": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "antithrombotic_preop",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "237057",
+          "display": "heparin sodium"
+        }
+      ],
+      "direct_transition": "Beta_Blocker_Chance"
+    },
+
+    "Beta_Blocker_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Beta blocking agents other combinations (ATC C07, OMOP concept 1123698).",
+        "Prevalence 40%.",
+        "Represented via metoprolol as the most common beta blocker in this population."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.40, "transition": "Beta_Blocker_Order" },
+        { "distribution": 0.60, "transition": "Aspirin_Chance" }
+      ]
+    },
+
+    "Beta_Blocker_Order": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "beta_blocker_preop",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "866514",
+          "display": "metoprolol succinate 25 MG Extended Release Oral Tablet"
+        }
+      ],
+      "direct_transition": "Aspirin_Chance"
+    },
+
+    "Aspirin_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Aspirin (OMOP concept 1112807, RxNorm 1191).",
+        "Prevalence 55%.",
+        "Antiplatelet standard of care for PAD patients."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.55, "transition": "Aspirin_Order" },
+        { "distribution": 0.45, "transition": "Organic_Nitrate_Chance" }
+      ]
+    },
+
+    "Aspirin_Order": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "aspirin_preop",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "1191",
+          "display": "aspirin"
+        }
+      ],
+      "direct_transition": "Organic_Nitrate_Chance"
+    },
+
+    "Organic_Nitrate_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Organic nitrates (ATC C01DA, OMOP concept 21600316).",
+        "Prevalence 20%.",
+        "Isosorbide mononitrate as representative long-acting nitrate."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.20, "transition": "Organic_Nitrate_Order" },
+        { "distribution": 0.80, "transition": "Lab_CK_MB" }
+      ]
+    },
+
+    "Organic_Nitrate_Order": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "organic_nitrate_preop",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "41493",
+          "display": "isosorbide mononitrate"
+        }
+      ],
+      "direct_transition": "Lab_CK_MB"
+    },
+
+    "Lab_CK_MB": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "ng/mL",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "13969-1",
+          "display": "Creatine kinase.MB [Mass/volume] in Serum or Plasma"
+        }
+      ],
+      "remarks": [
+        "CK-MB — top-ranked measurement covariate (OMOP concept 3005785).",
+        "Normal range: 0-3 ng/mL. Elevated values reflect myocardial stress.",
+        "LOINC 13969-1 maps to OMOP concept 3005785 (Measurement domain)."
+      ],
+      "range": { "low": 0.5, "high": 8.0 },
+      "direct_transition": "Lab_Neutrophil_Pct"
+    },
+
+    "Lab_Neutrophil_Pct": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "%",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "770-8",
+          "display": "Neutrophils/100 leukocytes in Blood by Automated count"
+        }
+      ],
+      "remarks": [
+        "Neutrophil percentage — CBC differential (OMOP concept 3012608).",
+        "Normal range: 45-75%. Elevated values reflect systemic inflammation.",
+        "LOINC 770-8 maps to OMOP concept 3012608 (Measurement domain)."
+      ],
+      "range": { "low": 45, "high": 82 },
+      "direct_transition": "Lab_Creatinine"
+    },
+
+    "Lab_Creatinine": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "2160-0",
+          "display": "Creatinine [Mass/volume] in Serum or Plasma"
+        }
+      ],
+      "remarks": [
+        "Serum creatinine — renal function marker (OMOP concept 3016723).",
+        "Normal: 0.6-1.2 mg/dL. Elevated in CKD, common comorbidity in PAD.",
+        "LOINC 2160-0 maps to OMOP concept 3016723 (Measurement domain)."
+      ],
+      "range": { "low": 0.6, "high": 2.5 },
+      "direct_transition": "Lab_Hemoglobin"
+    },
+
+    "Lab_Hemoglobin": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "g/dL",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "718-7",
+          "display": "Hemoglobin [Mass/volume] in Blood"
+        }
+      ],
+      "remarks": [
+        "Hemoglobin — anemia marker (OMOP concept 3000963).",
+        "Normal: 12.0-17.5 g/dL. Anemia is common in PAD and increases MACCE risk.",
+        "LOINC 718-7 maps to OMOP concept 3000963 (Measurement domain)."
+      ],
+      "range": { "low": 9.0, "high": 16.0 },
+      "direct_transition": "Lab_Cholesterol"
+    },
+
+    "Lab_Cholesterol": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "2093-3",
+          "display": "Cholesterol [Mass/volume] in Serum or Plasma"
+        }
+      ],
+      "remarks": [
+        "Total cholesterol (OMOP concept 3027114).",
+        "Range: 140-280 mg/dL in this PAD population on variable lipid therapy.",
+        "LOINC 2093-3 maps to OMOP concept 3027114 (Measurement domain)."
+      ],
+      "range": { "low": 140, "high": 280 },
+      "direct_transition": "Lab_WBC"
+    },
+
+    "Lab_WBC": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "10*3/uL",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "6690-2",
+          "display": "Leukocytes [#/volume] in Blood by Automated count"
+        }
+      ],
+      "remarks": [
+        "WBC count — systemic inflammation marker (OMOP concept 3000905).",
+        "Normal: 4.5-11.0 ×10³/µL. Leukocytosis may reflect infection or stress.",
+        "LOINC 6690-2 maps to OMOP concept 3000905 (Measurement domain)."
+      ],
+      "range": { "low": 4.0, "high": 14.0 },
+      "direct_transition": "Lab_CRP_HS"
+    },
+
+    "Lab_CRP_HS": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "30522-7",
+          "display": "C reactive protein [Mass/volume] in Serum or Plasma by High sensitivity method"
+        }
+      ],
+      "remarks": [
+        "High-sensitivity CRP — inflammation/cardiovascular risk marker (OMOP concept 3010156).",
+        "Range: 0.1-10 mg/dL. Elevated hsCRP predicts cardiovascular events.",
+        "LOINC 30522-7 maps to OMOP concept 3010156 (Measurement domain)."
+      ],
+      "range": { "low": 0.1, "high": 10.0 },
+      "direct_transition": "Lab_HbA1c"
+    },
+
+    "Lab_HbA1c": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "%",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "17856-6",
+          "display": "Hemoglobin A1c/Hemoglobin.total in Blood by HPLC"
+        }
+      ],
+      "remarks": [
+        "HbA1c by HPLC — glycemic control marker (OMOP concept 3005673).",
+        "Range: 5.0-11.0%. Elevated reflects poorly controlled diabetes.",
+        "LOINC 17856-6 maps to OMOP concept 3005673 (Measurement domain)."
+      ],
+      "range": { "low": 5.0, "high": 11.0 },
+      "direct_transition": "Lab_Platelets"
+    },
+
+    "Lab_Platelets": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "10*3/uL",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "777-3",
+          "display": "Platelets [#/volume] in Blood by Automated count"
+        }
+      ],
+      "remarks": [
+        "Platelet count (OMOP concept 3024929).",
+        "Normal: 150-400 ×10³/µL. Thrombocytopenia may affect antiplatelet management.",
+        "LOINC 777-3 maps to OMOP concept 3024929 (Measurement domain)."
+      ],
+      "range": { "low": 100, "high": 420 },
+      "direct_transition": "ABI_Observation"
+    },
+
+    "ABI_Observation": {
+      "type": "Observation",
+      "category": "vital-signs",
+      "unit": "ratio",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "77194-9",
+          "display": "Ankle-brachial index"
+        }
+      ],
+      "remarks": [
+        "ABI < 0.9 confirms PAD; < 0.5 indicates severe/critical limb ischemia.",
+        "LOINC 77194-9 maps to OMOP concept 46237026 (Measurement domain)."
+      ],
+      "range": { "low": 0.3, "high": 0.85 },
+      "direct_transition": "End_PAD_Diagnosis_Encounter"
+    },
+
+    "End_PAD_Diagnosis_Encounter": {
+      "type": "EncounterEnd",
+      "direct_transition": "Treatment_Strategy"
+    },
+
+    "Treatment_Strategy": {
+      "type": "Simple",
+      "remarks": [
+        "Treatment decision following PAD evaluation.",
+        "Oversampled for open surgical procedures to maximize MACCE outcome data.",
+        "Medical management (10%): antiplatelet, statin, exercise therapy — no procedure.",
+        "Endovascular (10%): balloon angioplasty / stenting — not an open surgery, exits pathway.",
+        "Open surgical (80%): open lower extremity revascularization — proceeds to MACCE pathway."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.10, "transition": "Medical_Management" },
+        { "distribution": 0.10, "transition": "Endovascular_Procedure_Encounter" },
+        { "distribution": 0.80, "transition": "Urgent_Case_Chance" }
+      ]
+    },
+
+    "Medical_Management": {
+      "type": "Simple",
+      "remarks": [
+        "Patient managed with medical therapy only.",
+        "No revascularization — exits the module."
+      ],
+      "direct_transition": "Terminal"
+    },
+
+    "Endovascular_Procedure_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "outpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "11429006",
+          "display": "Consultation"
+        }
+      ],
+      "direct_transition": "Endovascular_Procedure"
+    },
+
+    "Endovascular_Procedure": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "8990000",
+          "display": "Fluoroscopy guided percutaneous transluminal angioplasty of peripheral artery with contrast"
+        }
+      ],
+      "remarks": [
+        "Endovascular revascularization — does not enter the MACCE outcome pathway."
+      ],
+      "duration": { "low": 1, "high": 3, "unit": "hours" },
+      "direct_transition": "End_Endovascular_Encounter"
+    },
+
+    "End_Endovascular_Encounter": {
+      "type": "EncounterEnd",
+      "direct_transition": "Terminal"
+    },
+
+    "Urgent_Case_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Urgency is determined immediately after the treatment strategy decision.",
+        "25% of open surgical procedures are flagged urgent or emergent.",
+        "SNOMED-CT 73994005 routes to OMOP procedure_occurrence via concept 4158569."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.25, "transition": "Urgent_Case_Procedure" },
+        { "distribution": 0.75, "transition": "Pre_Surgical_Workup_Delay" }
+      ]
+    },
+
+    "Urgent_Case_Procedure": {
+      "type": "Procedure",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "73994005",
+          "display": "Emergency operation"
+        }
+      ],
+      "direct_transition": "Surgical_Admission_Encounter"
+    },
+
+    "Pre_Surgical_Workup_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "Time from PAD evaluation to open revascularization surgery.",
+        "Range: 1-6 months."
+      ],
+      "range": { "low": 30, "high": 180, "unit": "days" },
+      "direct_transition": "Surgical_Admission_Encounter"
+    },
+
+    "Surgical_Admission_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "inpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "32485007",
+          "display": "Hospital admission"
+        }
+      ],
+      "direct_transition": "Pre_Op_Delay"
+    },
+
+    "Pre_Op_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "Pre-operative optimisation window between admission and surgery: 0-7 days."
+      ],
+      "range": { "low": 0, "high": 7, "unit": "days" },
+      "direct_transition": "Pre_Op_Antibiotic"
+    },
+
+    "Pre_Op_Antibiotic": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "prophylactic_antibiotic",
+      "reason": "PAD_Onset",
+      "remarks": [
+        "Single-dose perioperative cefazolin per SCIP/ACS NSQIP guidelines."
+      ],
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "2180",
+          "display": "cefazolin"
+        }
+      ],
+      "direct_transition": "Revascularization_Procedure"
+    },
+
+    "Revascularization_Procedure": {
+      "type": "Simple",
+      "remarks": [
+        "Open lower extremity revascularization procedure selection (equal probability)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.20, "transition": "Femoro_Popliteal_Bypass" },
+        { "distribution": 0.20, "transition": "Femoral_Endarterectomy" },
+        { "distribution": 0.20, "transition": "Aorto_Bifemoral_Bypass" },
+        { "distribution": 0.20, "transition": "Femoro_Tibial_Bypass" },
+        { "distribution": 0.20, "transition": "Extra_Anatomic_Bypass" }
+      ]
+    },
+
+    "Femoro_Popliteal_Bypass": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "112828007",
+          "display": "Femoral-popliteal artery bypass graft"
+        }
+      ],
+      "duration": { "low": 2, "high": 5, "unit": "hours" },
+      "direct_transition": "Pre_Op_Antibiotic_End"
+    },
+
+    "Femoral_Endarterectomy": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "16589005",
+          "display": "Femoral endarterectomy"
+        }
+      ],
+      "duration": { "low": 1, "high": 3, "unit": "hours" },
+      "direct_transition": "Pre_Op_Antibiotic_End"
+    },
+
+    "Aorto_Bifemoral_Bypass": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "405482000",
+          "display": "Aorto-femoral arterial bypass"
+        }
+      ],
+      "duration": { "low": 2, "high": 4, "unit": "hours" },
+      "direct_transition": "Pre_Op_Antibiotic_End"
+    },
+
+    "Femoro_Tibial_Bypass": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "47575002",
+          "display": "Femorotibial vascular bypass, anterior or posterior"
+        }
+      ],
+      "duration": { "low": 2, "high": 5, "unit": "hours" },
+      "direct_transition": "Pre_Op_Antibiotic_End"
+    },
+
+    "Extra_Anatomic_Bypass": {
+      "type": "Procedure",
+      "remarks": [
+        "Extra-anatomic arterial bypass — axillofemoral, axillobifemoral, or femorofemoral.",
+        "SNOMED-CT 73985009 = Extra-anatomic bypass of artery (OMOP concept 4307475)."
+      ],
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "73985009",
+          "display": "Extra-anatomic bypass of artery"
+        }
+      ],
+      "duration": { "low": 2, "high": 4, "unit": "hours" },
+      "direct_transition": "Pre_Op_Antibiotic_End"
+    },
+
+    "Pre_Op_Antibiotic_End": {
+      "type": "MedicationEnd",
+      "referenced_by_attribute": "prophylactic_antibiotic",
+      "direct_transition": "Post_Op_Inpatient_Delay"
+    },
+
+    "Post_Op_Inpatient_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "Standard inpatient stay after open lower extremity bypass: 3-7 days."
+      ],
+      "range": { "low": 3, "high": 7, "unit": "days" },
+      "direct_transition": "MACCE_Risk_Gate"
+    },
+
+    "MACCE_Risk_Gate": {
+      "type": "Simple",
+      "remarks": [
+        "Fixed MACCE incidence within 30 days of open revascularization: 15%.",
+        "Based on published perioperative MACCE rates for this population.",
+        "MACCE events are distributed across the five components below.",
+        "85% of patients have no MACCE and are discharged to Terminal."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.15, "transition": "MACCE_Component_Branch" },
+        { "distribution": 0.85, "transition": "End_Surgical_Admission" }
+      ]
+    },
+
+    "MACCE_Component_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "Distributes MACCE cases across five components per study outcome definition:",
+        "  30% Myocardial infarction  (SNOMED 22298006 → OMOP 4329847)",
+        "  15% Cardiac arrest         (SNOMED 410429000 → OMOP 321042)",
+        "  25% Heart failure          (SNOMED 84114007  → OMOP 316139)",
+        "  20% Stroke/cereb. infarct  (SNOMED 432504007 → OMOP 443454)",
+        "  10% Cardiac death          (SNOMED 95281009  → OMOP 4317150)"
+      ],
+      "distributed_transition": [
+        { "distribution": 0.30, "transition": "MACCE_MI_Onset" },
+        { "distribution": 0.15, "transition": "MACCE_Cardiac_Arrest_Onset" },
+        { "distribution": 0.25, "transition": "MACCE_Heart_Failure_Onset" },
+        { "distribution": 0.20, "transition": "MACCE_Stroke_Onset" },
+        { "distribution": 0.10, "transition": "MACCE_Cardiac_Death_Onset" }
+      ]
+    },
+
+    "MACCE_MI_Onset": {
+      "type": "ConditionOnset",
+      "target_encounter": "MACCE_Inpatient_Encounter",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "22298006",
+          "display": "Myocardial infarction"
+        }
+      ],
+      "remarks": [
+        "Perioperative myocardial infarction — most common MACCE component.",
+        "SNOMED 22298006 → OMOP concept 4329847 (Condition domain, standard)."
+      ],
+      "direct_transition": "MACCE_Inpatient_Encounter"
+    },
+
+    "MACCE_Cardiac_Arrest_Onset": {
+      "type": "ConditionOnset",
+      "target_encounter": "MACCE_Inpatient_Encounter",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "410429000",
+          "display": "Cardiac arrest"
+        }
+      ],
+      "remarks": [
+        "Perioperative cardiac arrest.",
+        "SNOMED 410429000 → OMOP concept 321042 (Condition domain, standard)."
+      ],
+      "direct_transition": "MACCE_Inpatient_Encounter"
+    },
+
+    "MACCE_Heart_Failure_Onset": {
+      "type": "ConditionOnset",
+      "target_encounter": "MACCE_Inpatient_Encounter",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "84114007",
+          "display": "Heart failure"
+        }
+      ],
+      "remarks": [
+        "Acute perioperative heart failure decompensation.",
+        "SNOMED 84114007 → OMOP concept 316139 (Condition domain, standard)."
+      ],
+      "direct_transition": "MACCE_Inpatient_Encounter"
+    },
+
+    "MACCE_Stroke_Onset": {
+      "type": "ConditionOnset",
+      "target_encounter": "MACCE_Inpatient_Encounter",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "432504007",
+          "display": "Cerebral infarction"
+        }
+      ],
+      "remarks": [
+        "Perioperative ischemic stroke / cerebral infarction.",
+        "SNOMED 432504007 → OMOP concept 443454 (Condition domain, standard)."
+      ],
+      "direct_transition": "MACCE_Inpatient_Encounter"
+    },
+
+    "MACCE_Cardiac_Death_Onset": {
+      "type": "ConditionOnset",
+      "target_encounter": "MACCE_Inpatient_Encounter",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "95281009",
+          "display": "Cardiac death"
+        }
+      ],
+      "remarks": [
+        "Perioperative cardiac death.",
+        "SNOMED 95281009 → OMOP concept 4317150 (Condition domain, standard)."
+      ],
+      "direct_transition": "MACCE_Inpatient_Encounter"
+    },
+
+    "MACCE_Inpatient_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "inpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "32485007",
+          "display": "Hospital admission"
+        }
+      ],
+      "remarks": [
+        "Inpatient encounter representing the MACCE event hospitalization.",
+        "Length-of-stay: 3-14 days depending on MACCE severity."
+      ],
+      "direct_transition": "MACCE_Inpatient_Stay"
+    },
+
+    "MACCE_Inpatient_Stay": {
+      "type": "Delay",
+      "range": { "low": 3, "high": 14, "unit": "days" },
+      "direct_transition": "End_MACCE_Encounter"
+    },
+
+    "End_MACCE_Encounter": {
+      "type": "EncounterEnd",
+      "direct_transition": "Terminal"
+    },
+
+    "End_Surgical_Admission": {
+      "type": "EncounterEnd",
+      "direct_transition": "Terminal"
+    },
+
+    "Terminal": {
+      "type": "Terminal"
+    }
+
+  }
+}
