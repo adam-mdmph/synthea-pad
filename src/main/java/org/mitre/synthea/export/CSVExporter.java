@@ -464,6 +464,14 @@ public class CSVExporter {
       s.append(encounter.reason.code).append(',');
       s.append(clean(encounter.reason.display));
     }
+    // DISCHARGE: NUBC patient discharge status code (e.g. "01" = home,
+    // "62" = inpatient rehab IRF). Sourced from the discharge_disposition
+    // field on EncounterEnd states in the GMF module. Empty when the module
+    // does not set one — preserving prior behaviour for non-PAD modules.
+    s.append(',');
+    if (encounter.discharge != null && encounter.discharge.code != null) {
+      s.append(encounter.discharge.code);
+    }
 
     s.append(NEWLINE);
     fileManager.writeResourceLine(s.toString(), CSVConstants.ENCOUNTER_KEY);
