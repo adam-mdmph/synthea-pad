@@ -1,3 +1,27 @@
+# synthea-pad — PAD Study Customisations
+
+> **This is a study-specific fork of [Synthea](https://github.com/synthetichealth/synthea).**
+> It hosts custom Synthea modules for peripheral artery disease (PAD) observational studies
+> conducted in the adam-mdmph OMOP workspace.
+
+## Branch model
+
+`main` contains shared base modules applicable to all PAD studies.
+
+Each study has a **permanent, independent branch** that is **never merged back to `main`**:
+
+| Branch | Study repo | Description |
+|---|---|---|
+| `pad-oler-macce-val` | [pad-oler-macce-val](https://github.com/adam-mdmph/pad-oler-macce-val) | 30-day MACCE after PAD revascularisation |
+| `pad-oler-ssi-val` | [pad-oler-ssi-val](https://github.com/adam-mdmph/pad-oler-ssi-val) | 90-day surgical site infection |
+| `pad-oler-nhd-val` | [pad-oler-nhd-val](https://github.com/adam-mdmph/pad-oler-nhd-val) | Non-home discharge (OLER cohort) |
+
+Study branches are tracked as `external/synthea` submodules in their respective study repos.
+To update a study's Synthea module, work inside `external/synthea` in the study repo and push
+to the study branch — do not open a PR to `main`.
+
+---
+
 # Synthea<sup>TM</sup> Patient Generator ![Build Status](https://github.com/synthetichealth/synthea/workflows/.github/workflows/ci-build-test.yml/badge.svg?branch=master) [![codecov](https://codecov.io/gh/synthetichealth/synthea/branch/master/graph/badge.svg)](https://codecov.io/gh/synthetichealth/synthea)
 
 Synthea<sup>TM</sup> is a Synthetic Patient Population Simulator. The goal is to output synthetic, realistic (but not real), patient data and associated health records in a variety of formats.
