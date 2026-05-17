@@ -1,0 +1,845 @@
+{
+  "name": "PAD OLER Non-Home Discharge Validation",
+  "remarks": [
+    "==========================================================================",
+    "PAD / OLER NON-HOME DISCHARGE VALIDATION MODULE",
+    "External validation study for the Iannuzzi 2020 integer risk score for",
+    "non-home discharge (NHD) after open lower extremity revascularization.",
+    "==========================================================================",
+    "",
+    "STUDY DESIGN",
+    "------------",
+    "Target  : inpatient open lower extremity revascularization (OLER), age >= 18",
+    "Outcome : non-home discharge (to SNF or IRF) — captured in",
+    "          visit_occurrence.discharged_to_concept_id, NOT condition_occurrence.",
+    "Design  : prognostic model external validation, integer risk score.",
+    "See     : study_params.yaml, cohorts/target_surgery.sql, cohorts/outcome_nhd.sql",
+    "",
+    "CLINICAL PATHWAY",
+    "----------------",
+    "  Phase 1  Age guard (min 60) and PAD onset delay (onset ages 60–80)",
+    "  Phase 2  PAD diagnosis — ConditionOnset + outpatient consultation",
+    "  Phase 3  Covariates — nine Iannuzzi 2020 risk-score components.",
+    "           Each is mapped 1:1 to a row in covariates/covariates.csv.",
+    "",
+    "           Demographic (read from person table — no state required):",
+    "             age_60_69    [2 pts] — age at index 60–69",
+    "             age_70_79    [4 pts] — age at index 70–79",
+    "             age_ge80     [6 pts] — age at index >= 80",
+    "             female       [1 pt ] — person.gender_concept_id = Female",
+    "             nonwhite     [2 pts] — person.race_concept_id NOT IN white set",
+    "",
+    "           Clinical (explicit states in this module):",
+    "             tissue_loss  [3 pts] — CLI tissue loss (ischemic ulcer / gangrene)",
+    "             ambu_deficit [3 pts] — ambulatory deficit (any ambulatory device)",
+    "             insulin_dep  [2 pts] — insulin-dependent DM (drug exposure)",
+    "             anemia       [2 pts] — Hgb < 10 g/dL (LOINC, all patients measured)",
+    "",
+    "  Phase 4  Treatment strategy: 10% medical management / 90% OLER pathway",
+    "  Phase 5  Pre-operative workup delay (30–180 days)",
+    "  Phase 6  Inpatient OLER admission → procedure (bypass or endarterectomy)",
+    "  Phase 7  Post-operative inpatient stay (3–10 days)",
+    "  Phase 8  Discharge disposition gate — NHD vs home discharge",
+    "           Non-home discharge (30%): 18% SNF (NUBC 03), 12% IRF/rehab (NUBC 62)",
+    "           Home discharge   (70%): NUBC 01",
+    "",
+    "DEMOGRAPHIC COVARIATES — WHY NO MODULE STATES",
+    "----------------------------------------------",
+    "Synthea sets age, sex, and race at patient generation (synthea.properties)",
+    "before any module runs, so demographic prevalences cannot be set from inside",
+    "a Generic Module. The Iannuzzi pipeline reads these directly:",
+    "  age decades → person.year_of_birth (computed at index visit)",
+    "  female      → person.gender_concept_id",
+    "  nonwhite    → person.race_concept_id (NOT IN white_race concept set)",
+    "",
+    "Age distribution in this module is shaped by:",
+    "  Age_Guard            — min 60 years",
+    "  PAD_Onset_Delay      — uniform(0,20) yr after 60 → onset 60–80",
+    "  Age_90_Check         — caps at 90 at PAD onset",
+    "  Pre_OLER_Workup_Delay— 30–180 days from onset to index",
+    "This produces an index-age distribution roughly matching the Iannuzzi 2020",
+    "OLER cohort (target: ~40% age 60–69, ~35% age 70–79, ~15% age >=80).",
+    "RESEARCHER_ADJUSTS: change Age_Guard quantity, PAD_Onset_Delay range, and",
+    "Age_90_Check threshold together to shift the index-age mix.",
+    "",
+    "Sex and race distributions follow Synthea generator defaults (configured in",
+    "synthea.properties via generate.demographics.* settings). To match Iannuzzi",
+    "2020 (~38% female, ~15–20% non-white), tune the generator config — this",
+    "module intentionally contains no demographic states.",
+    "",
+    "NHD OUTCOME MODELLING",
+    "---------------------",
+    "Non-home discharge is a property of the index inpatient encounter, not a",
+    "post-discharge condition. The outcome is captured via discharge_disposition on",
+    "the EncounterEnd state (NUBC code written to encounters.csv DISCHARGE column).",
+    "The ETL step 10b + post-INSERT fix-up in run_synthea_full_csv_builder_etl.R",
+    "maps NUBC codes to OMOP visit_occurrence.discharged_to_concept_id.",
+    "outcome_nhd.sql identifies outcome cohort members by discharged_to_concept_id",
+    "NOT IN the home concept set (NUBC 01/06, CMS PoS 8536, and Maps-to targets).",
+    "The Outcome_Onset / Outcome_Encounter / Outcome_Management states from the",
+    "generic template have been removed — there is no condition_occurrence for NHD.",
+    "",
+    "NHD INCIDENCE ASSUMPTIONS",
+    "--------------------------",
+    "Overall NHD after OLER: 25%  (Iannuzzi 2020 derivation cohort overall ~ 20–25%)",
+    "Enriched to 30% for validation data richness. RESEARCHER_ADJUSTS in",
+    "Discharge_Disposition_Branch if a different incidence is preferred.",
+    "Non-home destination split (of NHD cases):",
+    "  SNF (NUBC 03) : 60% of NHD cases → 0.30 * 0.60 = 18% of all patients",
+    "  IRF (NUBC 62) : 40% of NHD cases → 0.30 * 0.40 = 12% of all patients",
+    "  Home          : 70% of all patients",
+    "",
+    "CONCEPT CODES — CONFIRMED",
+    "--------------------------",
+    "All source codes below were verified against this vocabulary build.",
+    "Reuse provenance:",
+    "  [vocab query — macce-val]    confirmed in pad-oler-macce-val",
+    "  [vocab query — ssi-val]      confirmed in pad-oler-ssi-val",
+    "  [vocab query — nhd-val]      confirmed in this study (covariate lookup, 2026-05-13)",
+    "  [vocab query — catalog]      verified entry in phenotype_library/catalog.yaml",
+    "",
+    "  PAD condition            : SNOMED-CT 399957001  [vocab query — macce-val]",
+    "  Hospital admission       : SNOMED-CT 32485007   [vocab query — macce-val]",
+    "  Outpatient consultation  : SNOMED-CT 11429006   [vocab query — macce-val]",
+    "  Femoro-popliteal bypass  : SNOMED-CT 112828007  [vocab query — ssi-val/macce-val]",
+    "  Femoral endarterectomy   : SNOMED-CT 16589005   [vocab query — ssi-val/macce-val]",
+    "  Hemoglobin               : LOINC     718-7      [vocab query — macce-val]",
+    "  Ischemic ulcer           : SNOMED-CT 13954005   [vocab query — nhd-val/catalog]",
+    "  Ischemic gangrene        : SNOMED-CT 402861007  [vocab query — nhd-val/catalog]",
+    "  Walking aid use          : SNOMED-CT 165251008  [vocab query — nhd-val/catalog]",
+    "  Insulin glargine         : RxNorm    274783     [vocab query — nhd-val/catalog]",
+    "  NUBC home discharge      : NUBC 01              [vocab query — ssi-val]",
+    "  NUBC SNF discharge       : NUBC 03              [vocab query — ssi-val]",
+    "  NUBC IRF discharge       : NUBC 62              [vocab query — ssi-val]",
+    "",
+    "COVARIATE PREVALENCE ASSUMPTIONS (Iannuzzi 2020 Table II — RESEARCHER_ADJUSTS)",
+    "  Clinical (controlled by this module's distributed_transition states):",
+    "    Tissue loss (CLI)    : 21% of OLER patients   → Tissue_Loss_Check",
+    "    Ambulatory deficit   : 20% of OLER patients   → Ambu_Deficit_Check",
+    "    Insulin-dependent DM : 16% of OLER patients   → Insulin_Check",
+    "    Anemia (Hgb < 10)    : 11% of OLER patients   → Anemia_Check",
+    "",
+    "  Demographic (controlled by Synthea generator config — NOT this module):",
+    "    Age 60-69 at index   : ~40%   shaped by Age_Guard + PAD_Onset_Delay",
+    "    Age 70-79 at index   : ~35%   shaped by Age_Guard + PAD_Onset_Delay",
+    "    Age >= 80 at index   : ~15%   shaped by Age_90_Check",
+    "    Female               : ~38%   set via synthea.properties (default ~50%)",
+    "    Non-white            : ~15-20% set via synthea.properties (default per US census)",
+    "",
+    "USAGE",
+    "-----",
+    "Copy to <synthea_home>/src/main/resources/modules/ (or external/synthea/src/...)",
+    "and run: Rscript workflow/04_generate_synthea_csv.sh",
+    "Then run: Rscript workflow/05_etl_csv_to_omop.R",
+    "Validate with: Rscript workflow/06_quality_check_defined_phenotypes.R"
+  ],
+  "states": {
+
+    "Initial": {
+      "type": "Initial",
+      "remarks": [
+        "Entry point. Transitions immediately to Age_Guard, which holds",
+        "patients below the minimum PAD study age (60 years)."
+      ],
+      "direct_transition": "Age_Guard"
+    },
+
+    "Age_Guard": {
+      "type": "Guard",
+      "remarks": [
+        "PAD / OLER is predominantly a disease of patients aged 60+. Guard set to",
+        "60 years to match the age distribution of the Iannuzzi 2020 derivation cohort.",
+        "Note: the target cohort SQL in study_params.yaml enforces min_age_at_index = 18,",
+        "so Synthea patients aged 18–59 would be valid targets if generated — this guard",
+        "simply focuses the simulation on the realistic PAD population.",
+        "RESEARCHER_ADJUSTS: change quantity to 18 to allow younger patients."
+      ],
+      "allow": {
+        "condition_type": "Age",
+        "operator": ">=",
+        "quantity": 60,
+        "unit": "years"
+      },
+      "direct_transition": "PAD_Onset_Delay"
+    },
+
+    "PAD_Onset_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "Random delay after age 60 before PAD develops. Uniform(0, 20) years",
+        "produces an onset age distribution of 60–80, consistent with the",
+        "vascular surgery cohort age profile in Iannuzzi 2020.",
+        "RESEARCHER_ADJUSTS: change high to 30 to allow onset up to age 90."
+      ],
+      "range": {
+        "low": 0,
+        "high": 20,
+        "unit": "years"
+      },
+      "direct_transition": "Age_90_Check"
+    },
+
+    "Age_90_Check": {
+      "type": "Simple",
+      "remarks": [
+        "Cap to prevent simulation of implausibly aged open surgical patients.",
+        "Patients over 90 at PAD onset exit without procedure records.",
+        "RESEARCHER_ADJUSTS: change quantity to 120 to effectively disable the cap."
+      ],
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Age",
+            "operator": ">",
+            "quantity": 90,
+            "unit": "years"
+          },
+          "transition": "Terminal_Age_Exceeded"
+        },
+        {
+          "transition": "PAD_Diagnosis_Onset"
+        }
+      ]
+    },
+
+    "Terminal_Age_Exceeded": {
+      "type": "Terminal"
+    },
+
+    "PAD_Diagnosis_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Peripheral arterial disease — the qualifying condition that leads",
+        "to an OLER procedure and study inclusion.",
+        "SNOMED-CT 399957001 (Peripheral arterial disease) confirmed against",
+        "this vocabulary in pad-oler-macce-val [vocab query — macce-val].",
+        "This concept maps to OMOP condition_occurrence via the SNOMED→OMOP",
+        "standard mapping. Descendant concepts (claudication, critical limb",
+        "ischaemia, etc.) are covered by the OMOP ancestor rollup."
+      ],
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "399957001",
+          "display": "Peripheral arterial disease"
+        }
+      ],
+      "assign_to_attribute": "pad_diagnosis",
+      "direct_transition": "PAD_Diagnosis_Encounter"
+    },
+
+    "PAD_Diagnosis_Encounter": {
+      "type": "Encounter",
+      "remarks": [
+        "Outpatient vascular surgery consultation in which PAD is documented",
+        "and preoperative risk factors (covariates) are assessed. This encounter",
+        "stays OPEN through all four covariate states and is closed at",
+        "Treatment_Strategy via the path-end EncounterEnd states.",
+        "SNOMED-CT 11429006 (Consultation) confirmed in pad-oler-macce-val",
+        "[vocab query — macce-val]."
+      ],
+      "encounter_class": "outpatient",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "11429006",
+          "display": "Consultation"
+        }
+      ],
+      "reason": "pad_diagnosis",
+      "direct_transition": "Tissue_Loss_Check"
+    },
+
+    "Tissue_Loss_Check": {
+      "type": "Simple",
+      "remarks": [
+        "IANNUZZI 2020 COMPONENT: Tissue loss (CLI) — 3 points.",
+        "Tissue loss = ischemic wound, ulcer, or gangrene of the affected limb,",
+        "indicating critical limb ischaemia (CLI) as the operative indication.",
+        "Prevalence: ~21% of OLER patients (Iannuzzi 2020 Table II).",
+        "RESEARCHER_ADJUSTS: change distribution 0 to match your population estimate.",
+        "",
+        "Maps to covariates.csv row: tissue_loss (domain = condition,",
+        "lookback -365 to 0 days, points = 3).",
+        "phenotype_library catalog entry: pad_indication_tissue_loss — uses BOTH",
+        "  4029926 Ischemic ulcer  (SNOMED 13954005, include_descendants=TRUE)",
+        "  4291464 Ischemic gangrene (SNOMED 402861007, include_descendants=TRUE)",
+        "as OR logic. We split the 21% population into ulcer (70%) + gangrene (30%)",
+        "via Tissue_Loss_Type_Branch so both ancestor branches are exercised in",
+        "synthetic data — without the split, gangrene cases would never be generated."
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.21,
+          "transition": "Tissue_Loss_Type_Branch"
+        },
+        {
+          "distribution": 0.79,
+          "transition": "Ambu_Deficit_Check"
+        }
+      ]
+    },
+
+    "Tissue_Loss_Type_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "Split CLI tissue loss into ischemic ulcer vs ischemic gangrene to exercise",
+        "both ancestor concept IDs in covariate_concepts.csv. CLI literature mix:",
+        "  ~70% present with ischemic ulceration (more common, often distal foot)",
+        "  ~30% present with frank gangrene (more advanced, often toes/forefoot)",
+        "RESEARCHER_ADJUSTS: shift toward gangrene for end-stage CLI populations."
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.70,
+          "transition": "Tissue_Loss_Ulcer"
+        },
+        {
+          "distribution": 0.30,
+          "transition": "Tissue_Loss_Gangrene"
+        }
+      ]
+    },
+
+    "Tissue_Loss_Ulcer": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Ischemic ulcer — SNOMED 13954005, maps to OMOP standard concept",
+        "4029926 (Condition domain). Verified against this vocabulary in",
+        "phenotype_library/catalog.yaml (pad_indication_tissue_loss, 2026-04-02)",
+        "and via direct concept_id lookup on 2026-05-13 [vocab query — nhd-val].",
+        "Descendants (31 standard) cover ischemic foot ulcer, ischemic ulcer of",
+        "toe, neuroischemic foot ulcer — picked up by include_descendants=TRUE",
+        "in covariate_concepts.csv."
+      ],
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "13954005",
+          "display": "Ischemic ulcer"
+        }
+      ],
+      "assign_to_attribute": "tissue_loss",
+      "direct_transition": "Ambu_Deficit_Check"
+    },
+
+    "Tissue_Loss_Gangrene": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Ischemic gangrene — SNOMED 402861007, maps to OMOP standard concept",
+        "4291464 (Condition domain). Verified against this vocabulary in",
+        "phenotype_library/catalog.yaml (pad_indication_tissue_loss, 2026-05-12)",
+        "and via direct concept_id lookup on 2026-05-13 [vocab query — nhd-val].",
+        "One standard descendant in this vocab build."
+      ],
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "402861007",
+          "display": "Ischemic gangrene"
+        }
+      ],
+      "assign_to_attribute": "tissue_loss",
+      "direct_transition": "Ambu_Deficit_Check"
+    },
+
+    "Ambu_Deficit_Check": {
+      "type": "Simple",
+      "remarks": [
+        "IANNUZZI 2020 COMPONENT: Ambulatory deficit — 3 points.",
+        "Ambulatory deficit = use of any ambulatory device (cane, walker, wheelchair)",
+        "documented before the index procedure.",
+        "Prevalence: ~20% of OLER patients (Iannuzzi 2020 Table II).",
+        "RESEARCHER_ADJUSTS: change distribution 0 to your population estimate.",
+        "",
+        "OMOP capture varies by site — may appear as observation (assistive device)",
+        "or condition (gait disorder / mobility impairment). The covariate lookup",
+        "query covers both domains; confirm with your informatics team.",
+        "",
+        "Maps to covariates.csv row: ambu_deficit (domain = observation,",
+        "lookback -365 to -1 days, points = 3)."
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.20,
+          "transition": "Ambu_Deficit_Onset"
+        },
+        {
+          "distribution": 0.80,
+          "transition": "Insulin_Check"
+        }
+      ]
+    },
+
+    "Ambu_Deficit_Onset": {
+      "type": "Observation",
+      "remarks": [
+        "Ambulatory deficit — use of any walking aid / mobility device.",
+        "SNOMED 165251008 'Walking aid use' maps to OMOP standard concept 4012645",
+        "(OMOP Observation domain). Verified against this vocabulary in",
+        "phenotype_library/catalog.yaml (ambulatory_deficit, 2026-05-12) and via",
+        "direct concept_id lookup on 2026-05-13 [vocab query — nhd-val].",
+        "",
+        "State type is Observation (not ConditionOnset) because the OMOP standard",
+        "concept lands in the Observation domain. The Iannuzzi pipeline's",
+        "query_ambu_deficit_covariate_counts() reads the observation table.",
+        "",
+        "The catalog entry uses four SNOMED ancestors as OR logic with",
+        "include_descendants=TRUE (4012645 Walking aid use, 437643 Abnormal gait,",
+        "439405 Walking disability, 36714126 Difficulty walking). Walking aid use",
+        "is the most specific match to the Iannuzzi 'use of any ambulatory device'",
+        "definition; the other three are caught by the covariate query's OR set if",
+        "an EHR codes ambulation limitation differently.",
+        "",
+        "value: exact quantity=1 represents presence of the observation",
+        "(no clinically meaningful numeric value — boolean presence/absence)."
+      ],
+      "category": "social-history",
+      "unit": "{presence}",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "165251008",
+          "display": "Walking aid use"
+        }
+      ],
+      "exact": {
+        "quantity": 1
+      },
+      "assign_to_attribute": "ambu_deficit",
+      "direct_transition": "Insulin_Check"
+    },
+
+    "Insulin_Check": {
+      "type": "Simple",
+      "remarks": [
+        "IANNUZZI 2020 COMPONENT: Insulin-dependent diabetes mellitus — 2 points.",
+        "Operationalised as active insulin drug exposure before the index procedure.",
+        "A drug-exposure approach is preferred over condition codes because SNOMED",
+        "does not cleanly distinguish Type 1 from Type 2 DM on insulin.",
+        "Prevalence: ~16% of OLER patients (Iannuzzi 2020 Table II).",
+        "RESEARCHER_ADJUSTS: change distribution 0 to your population estimate.",
+        "",
+        "Maps to covariates.csv row: insulin_dep (domain = drug,",
+        "lookback -365 to -1 days, points = 2)."
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.16,
+          "transition": "Insulin_Order"
+        },
+        {
+          "distribution": 0.84,
+          "transition": "Anemia_Check"
+        }
+      ]
+    },
+
+    "Insulin_Order": {
+      "type": "MedicationOrder",
+      "remarks": [
+        "Insulin order within the open outpatient diagnosis encounter.",
+        "Represents ongoing insulin use documented at the preoperative visit.",
+        "",
+        "RxNorm 274783 'insulin glargine' (Ingredient) — long-acting basal insulin,",
+        "OMOP concept 1502905. Matches the 1 unit/day once-daily dosage modelled",
+        "below. Verified against this vocabulary on 2026-05-13 [vocab query — nhd-val].",
+        "",
+        "OMOP rollup: insulin glargine is a descendant of ATC 21600713 'INSULINS",
+        "AND ANALOGUES' (catalog entry insulin_dependent_diabetes_drug, verified",
+        "2026-05-12). covariates/covariate_concepts.csv row insulin_dep should",
+        "carry concept_id 21600713 with include_descendants=TRUE so that all",
+        "10,053 insulin formulations (glargine, aspart, NPH, etc.) are captured",
+        "regardless of which RxNorm ingredient Synthea generates.",
+        "",
+        "dosage: 1 unit/day represents a once-daily long-acting dose; adjust",
+        "if simulating rapid-acting or mixed insulin regimens.",
+        "The medication spans the pre-operative period and satisfies the",
+        "lookback window (-365 to -1 days) in covariates.csv."
+      ],
+      "codes": [
+        {
+          "system": "RxNorm",
+          "code": "274783",
+          "display": "insulin glargine"
+        }
+      ],
+      "dosage": {
+        "amount": 1,
+        "frequency": 1,
+        "period": 1,
+        "unit": "days"
+      },
+      "duration": {
+        "low": 60,
+        "high": 180,
+        "unit": "days"
+      },
+      "reason": "pad_diagnosis",
+      "direct_transition": "Anemia_Check"
+    },
+
+    "Anemia_Check": {
+      "type": "Simple",
+      "remarks": [
+        "IANNUZZI 2020 COMPONENT: Anemia (Hgb < 10 g/dL) — 2 points.",
+        "Generates a haemoglobin measurement for ALL patients (standard",
+        "pre-surgical workup). The 11% anemic branch produces a low Hgb value",
+        "(5.5–9.9 g/dL); the 89% non-anemic branch produces a normal value",
+        "(10.0–17.0 g/dL). Both result in an Hgb observation record in",
+        "measurement_occurrence, which the pipeline reads via",
+        "query_anemia_covariate_counts().",
+        "",
+        "missing_is_negative = FALSE in covariates.csv, so patients without an",
+        "Hgb measurement would be flagged as unknown. Generating Hgb for all",
+        "patients avoids this ambiguity in the synthetic dataset.",
+        "",
+        "LOINC 718-7 (Hemoglobin [Mass/volume] in Blood) confirmed against",
+        "this vocabulary in pad-oler-macce-val [vocab query — macce-val].",
+        "",
+        "RESEARCHER_ADJUSTS: change distribution 0 to your population estimate.",
+        "Iannuzzi 2020: ~11% prevalence of Hgb < 10 g/dL in OLER patients.",
+        "",
+        "Maps to covariates.csv row: anemia (domain = measurement,",
+        "lookback -365 to -1 days, points = 2, missing_is_negative = FALSE)."
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.11,
+          "transition": "Anemia_Hgb_Low"
+        },
+        {
+          "distribution": 0.89,
+          "transition": "Anemia_Hgb_Normal"
+        }
+      ]
+    },
+
+    "Anemia_Hgb_Low": {
+      "type": "Observation",
+      "remarks": [
+        "Haemoglobin below 10 g/dL — anemia threshold for the Iannuzzi score.",
+        "Range 5.5–9.9 g/dL represents a clinically meaningful anaemia spectrum",
+        "in pre-surgical vascular patients (severe to moderate anaemia).",
+        "LOINC 718-7 confirmed [vocab query — macce-val]."
+      ],
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "718-7",
+          "display": "Hemoglobin [Mass/volume] in Blood"
+        }
+      ],
+      "range": {
+        "low": 5.5,
+        "high": 9.9
+      },
+      "unit": "g/dL",
+      "direct_transition": "Treatment_Strategy"
+    },
+
+    "Anemia_Hgb_Normal": {
+      "type": "Observation",
+      "remarks": [
+        "Normal haemoglobin — patient does not meet anaemia criterion.",
+        "Range 10.0–17.0 g/dL covers the normal and mildly reduced spectrum.",
+        "Generating a normal Hgb value ensures every patient has a measurement",
+        "record, preventing missing_is_negative = FALSE from marking patients unknown.",
+        "LOINC 718-7 confirmed [vocab query — macce-val]."
+      ],
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "718-7",
+          "display": "Hemoglobin [Mass/volume] in Blood"
+        }
+      ],
+      "range": {
+        "low": 10.0,
+        "high": 17.0
+      },
+      "unit": "g/dL",
+      "direct_transition": "Treatment_Strategy"
+    },
+
+    "Treatment_Strategy": {
+      "type": "Simple",
+      "remarks": [
+        "Treatment decision following PAD evaluation.",
+        "10% receive medical management only (no procedure record generated).",
+        "90% proceed to open lower extremity revascularization (OLER).",
+        "Oversampled toward OLER to maximise discharge disposition events for",
+        "validation. RESEARCHER_ADJUSTS: shift Non_Exposed_Path_End distribution",
+        "toward ~0.40 for a more realistic medical vs. surgical mix.",
+        "Real-world: ~30-40% of PAD patients receive medical management alone.",
+        "",
+        "This state also closes the outpatient diagnosis encounter via the",
+        "path-end EncounterEnd states before the inpatient encounter opens."
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.10,
+          "transition": "Non_Exposed_Path_End"
+        },
+        {
+          "distribution": 0.90,
+          "transition": "Target_Exposed_Path_End"
+        }
+      ]
+    },
+
+    "Non_Exposed_Path_End": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Closes the outpatient diagnosis encounter for medically-managed patients.",
+        "No index procedure or discharge record is generated — these patients",
+        "do not enter the target cohort."
+      ],
+      "direct_transition": "Terminal_Non_Exposed"
+    },
+
+    "Terminal_Non_Exposed": {
+      "type": "Terminal"
+    },
+
+    "Target_Exposed_Path_End": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Closes the outpatient diagnosis encounter for patients proceeding to OLER.",
+        "The inpatient encounter (OLER_Admission_Encounter) opens after the",
+        "pre-operative workup delay."
+      ],
+      "direct_transition": "Pre_OLER_Workup_Delay"
+    },
+
+    "Pre_OLER_Workup_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "Time between outpatient PAD consultation and inpatient surgical admission.",
+        "Covers pre-operative optimisation, cardiac clearance, and scheduling.",
+        "RESEARCHER_ADJUSTS: set low and high (days) for your study's typical",
+        "diagnosis-to-procedure interval.",
+        "Default: 30–180 days (1–6 months) — typical elective open vascular pathway.",
+        "  Urgent/emergent CLI: 0–7 days.",
+        "  Standard elective: 30–90 days."
+      ],
+      "range": {
+        "low": 30,
+        "high": 180,
+        "unit": "days"
+      },
+      "direct_transition": "OLER_Admission_Encounter"
+    },
+
+    "OLER_Admission_Encounter": {
+      "type": "Encounter",
+      "remarks": [
+        "Inpatient surgical admission for open lower extremity revascularization.",
+        "encounter_class = inpatient maps to OMOP visit_concept_id = 9201",
+        "(Inpatient Visit), matching the target cohort SQL visit filter.",
+        "SNOMED-CT 32485007 (Hospital admission) confirmed against this vocabulary",
+        "in pad-oler-macce-val [vocab query — macce-val]."
+      ],
+      "encounter_class": "inpatient",
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "32485007",
+          "display": "Hospital admission"
+        }
+      ],
+      "reason": "pad_diagnosis",
+      "direct_transition": "OLER_Procedure_Branch"
+    },
+
+    "OLER_Procedure_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "Distributes patients across the two OLER procedure families that are",
+        "covered by the target cohort ancestor concept IDs in study_params.yaml:",
+        "  4236706 — Arterial bypass of lower limb artery (bypass descendants)",
+        "  4225375 — Endarterectomy of lower limb artery (endarterectomy descendants)",
+        "Modelling both ensures both ancestor branches are tested in synthetic data.",
+        "RESEARCHER_ADJUSTS: adjust distributions to match your site's procedure mix.",
+        "Typical open vascular registry: ~75% bypass, ~25% endarterectomy."
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.75,
+          "transition": "OLER_Bypass"
+        },
+        {
+          "distribution": 0.25,
+          "transition": "OLER_Endarterectomy"
+        }
+      ]
+    },
+
+    "OLER_Bypass": {
+      "type": "Procedure",
+      "remarks": [
+        "Femoral-popliteal artery bypass graft — most common OLER type.",
+        "SNOMED-CT 112828007 confirmed against this vocabulary in",
+        "pad-oler-ssi-val and pad-oler-macce-val [vocab query — ssi-val / macce-val].",
+        "Descendant of OMOP ancestor concept 4236706 (Arterial bypass of lower",
+        "limb artery) used in target_surgery.sql and study_params.yaml.",
+        "Duration: major open vascular surgery typically 3–5 hours (180–300 min).",
+        "RESEARCHER_ADJUSTS: change duration range to reflect your case mix."
+      ],
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "112828007",
+          "display": "Femoral-popliteal artery bypass graft"
+        }
+      ],
+      "duration": {
+        "low": 180,
+        "high": 300,
+        "unit": "minutes"
+      },
+      "direct_transition": "Post_OLER_Inpatient_Stay"
+    },
+
+    "OLER_Endarterectomy": {
+      "type": "Procedure",
+      "remarks": [
+        "Femoral endarterectomy — second OLER family covered by the target cohort.",
+        "SNOMED-CT 16589005 confirmed against this vocabulary in",
+        "pad-oler-ssi-val and pad-oler-macce-val [vocab query — ssi-val / macce-val].",
+        "Descendant of OMOP ancestor concept 4225375 (Endarterectomy of lower",
+        "limb artery) used in target_surgery.sql and study_params.yaml.",
+        "Duration: typically shorter than bypass surgery, 60–180 min.",
+        "RESEARCHER_ADJUSTS: adjust duration to match your site's operative times."
+      ],
+      "codes": [
+        {
+          "system": "SNOMED-CT",
+          "code": "16589005",
+          "display": "Femoral endarterectomy"
+        }
+      ],
+      "duration": {
+        "low": 60,
+        "high": 180,
+        "unit": "minutes"
+      },
+      "direct_transition": "Post_OLER_Inpatient_Stay"
+    },
+
+    "Post_OLER_Inpatient_Stay": {
+      "type": "Delay",
+      "remarks": [
+        "Post-operative inpatient stay after open lower extremity revascularization.",
+        "Typical LOS after open bypass surgery: 3–10 days.",
+        "Longer stays are associated with higher NHD probability — the score",
+        "captures this via the pre-operative risk factor profile rather than LOS directly.",
+        "RESEARCHER_ADJUSTS: set low and high (days) to your site's observed LOS.",
+        "  Uncomplicated bypass/endarterectomy: 3–7 days.",
+        "  Complex reconstruction or CLI with wound: 5–14 days."
+      ],
+      "range": {
+        "low": 3,
+        "high": 10,
+        "unit": "days"
+      },
+      "direct_transition": "Discharge_Disposition_Branch"
+    },
+
+    "Discharge_Disposition_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "NHD OUTCOME GATE — discharge destination decision point.",
+        "Non-home discharge rate: 30% (enriched from Iannuzzi 2020's ~20-25% overall",
+        "to provide richer NHD events for validation).",
+        "  18% → SNF (skilled nursing facility, NUBC 03)",
+        "  12% → IRF (inpatient rehab facility, NUBC 62)",
+        "  70% → Home (routine discharge, NUBC 01)",
+        "",
+        "RESEARCHER_ADJUSTS: adjust distributions to match the NHD prevalence in",
+        "your validation population or to change the NHD enrichment level.",
+        "Match the SNF vs. IRF split to the disposition mix at your site.",
+        "",
+        "OMOP mapping: NUBC codes are written to encounters.csv DISCHARGE column",
+        "by the synthea-pad fork. ETL step 10b + post-INSERT fix-up maps them to",
+        "visit_occurrence.discharged_to_concept_id via the OMOP vocabulary",
+        "(UB04 Pt dis status → Maps to → CMS Place of Service).",
+        "  NUBC 01 → OMOP UB04 concept 32210 → CMS PoS 8536 (Home)",
+        "  NUBC 03 → OMOP UB04 concept 32212 → CMS PoS 8546 (Skilled Nursing Facility)",
+        "  NUBC 62 → OMOP UB04 concept 32228 → CMS PoS 8920 (Comprehensive IRF)"
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.18,
+          "transition": "End_Admission_SNF"
+        },
+        {
+          "distribution": 0.12,
+          "transition": "End_Admission_IRF"
+        },
+        {
+          "distribution": 0.70,
+          "transition": "End_Admission_Home"
+        }
+      ]
+    },
+
+    "End_Admission_SNF": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Discharge to skilled nursing facility (SNF) — non-home discharge.",
+        "NUBC code 03 maps to OMOP UB04 Pt dis status concept 32212.",
+        "The outcome_nhd.sql CTE classifies this visit as NHD because",
+        "discharged_to_concept_id will NOT be in the home concept set.",
+        "NUBC 03 confirmed as standard NUBC discharge code [vocab query — ssi-val]."
+      ],
+      "discharge_disposition": {
+        "system": "NUBC",
+        "code": "03",
+        "display": "Discharged/transferred to skilled nursing facility (SNF)"
+      },
+      "direct_transition": "Terminal"
+    },
+
+    "End_Admission_IRF": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Discharge to inpatient rehabilitation facility (IRF) — non-home discharge.",
+        "NUBC code 62 maps to OMOP UB04 Pt dis status concept 32228 (typically",
+        "rolled up to CMS Place of Service concept 8920 by the synthea-to-OMOP ETL).",
+        "NUBC 62 confirmed [vocab query — ssi-val]."
+      ],
+      "discharge_disposition": {
+        "system": "NUBC",
+        "code": "62",
+        "display": "Discharged/transferred to an inpatient rehabilitation facility (IRF)"
+      },
+      "direct_transition": "Terminal"
+    },
+
+    "End_Admission_Home": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Routine discharge to home — NOT a non-home discharge outcome.",
+        "NUBC code 01 maps to OMOP UB04 Pt dis status concept 32210 (typically",
+        "rolled up to CMS Place of Service concept 8536 'Home' by the ETL).",
+        "The outcome_nhd.sql CTE will classify this visit as home discharge",
+        "and exclude it from the outcome cohort.",
+        "NUBC 01 confirmed [vocab query — ssi-val]."
+      ],
+      "discharge_disposition": {
+        "system": "NUBC",
+        "code": "01",
+        "display": "Discharged to home or self care (routine discharge)"
+      },
+      "direct_transition": "Terminal"
+    },
+
+    "Terminal": {
+      "type": "Terminal"
+    }
+
+  }
+}
