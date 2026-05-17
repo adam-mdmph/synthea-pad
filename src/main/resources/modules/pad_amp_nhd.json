@@ -1,0 +1,823 @@
+{
+  "name": "PAD Major Amputation Non-Home Discharge Validation",
+  "remarks": [
+    "==========================================================================",
+    "PAD / MAJOR LE AMPUTATION — NON-HOME DISCHARGE VALIDATION MODULE",
+    "External validation of two integer risk scores for non-home discharge",
+    "(NHD) after major lower extremity amputation:",
+    "  1. Iannuzzi 2020 (J Vasc Surg 71:889) — 9 components, 0–18 pts",
+    "  2. Subramaniam 2018 mFI-5 (J Am Coll Surg 226:173) — 5 components, 0–5 pts",
+    "==========================================================================",
+    "",
+    "STUDY DESIGN",
+    "------------",
+    "Target  : inpatient major LE amputation (AKA / BKA / through-knee /",
+    "          hip disarticulation / hemipelvectomy / ankle disart), age >= 18,",
+    "          with at least ONE of PAD, diabetes mellitus, or LE wound",
+    "          documented on or before the index date.",
+    "Outcome : non-home discharge (to SNF or IRF) — captured at the index",
+    "          inpatient encounter's discharge_disposition (NUBC code), mapped",
+    "          to visit_occurrence.discharged_to_concept_id by the ETL.",
+    "Design  : prognostic model external validation, integer risk score.",
+    "See     : study_params.yaml, cohorts/target_amputation.sql,",
+    "          cohorts/outcome_nhd.sql, covariates/covariates.csv,",
+    "          covariates/covariates_mfi5.csv",
+    "",
+    "CLINICAL PATHWAY",
+    "----------------",
+    "  Phase 1  Age guard (min 60) + onset delay (0–25 yr) + age cap (95)",
+    "  Phase 2  Indication assignment — 5 paths cover PAD-only, PAD+DM,",
+    "           DM-only, PAD+Wound, Wound-only. Every patient receives at",
+    "           least one qualifying indication condition.",
+    "  Phase 3  Indication outpatient encounter (open through all covariate states)",
+    "  Phase 4  Covariate cascade — generates conditions / observations /",
+    "           drug exposures covering both Iannuzzi and mFI-5 score components.",
+    "           Tissue loss (Iannuzzi) and diabetes mellitus (mFI-5) are",
+    "           intentionally OMITTED from the cascade — they are issued by",
+    "           the indication paths in Phase 2 and double-coding them here",
+    "           would inflate prevalence and add duplicate condition_occurrence",
+    "           rows. Effective prevalences from the indication mix:",
+    "               tissue_loss  ~25% (PAD+Wound 15% + Wound-only 10%, ulcer only)",
+    "               dm           ~40% (PAD+DM 25% + DM-only 15%)",
+    "             Iannuzzi-specific:",
+    "               ambu_deficit [3 pts]  20% (walking aid use observation)",
+    "               insulin_dep  [2 pts]  16% (insulin glargine medication)",
+    "               anemia       [2 pts]  11% (Hgb < 10 g/dL; Hgb measured for ALL)",
+    "             mFI-5-specific:",
+    "               copd          [1 pt mFI-5]  15%",
+    "               chf           [1 pt mFI-5]  20%",
+    "               htn           [1 pt mFI-5]  65% (very common in elderly amputation pop)",
+    "               fs_dep        [1 pt mFI-5]  25% (frailty 60% / impaired mobility 40%)",
+    "           Demographic components (age decades, female, nonwhite) are read",
+    "           directly from person.year_of_birth / gender_concept_id / race_concept_id",
+    "           and require no module states.",
+    "           NOTE: The ischemic gangrene ancestor (4291464) is NOT exercised",
+    "           in synthetic data — only ischemic ulcer (4029926) is generated",
+    "           via the indication paths. To exercise the gangrene branch, split",
+    "           the wound-bearing indication paths to issue 13954005 (70%) or",
+    "           402861007 (30%) as in the OLER reference module.",
+    "  Phase 5  Treatment strategy oversampling: 10% non-exposed / 90% exposed.",
+    "           Close the outpatient encounter via path-end EncounterEnd states.",
+    "  Phase 6  Pre-amputation workup delay (7–90 days — shorter than OLER pathway",
+    "           because major amputation is often urgent for advanced CLI/wound).",
+    "  Phase 7  Inpatient amputation admission → AKA (40%) or BKA (60%) procedure",
+    "  Phase 8  Post-amputation inpatient stay (7–21 days — major amputation LOS",
+    "           is typically longer than OLER bypass/endarterectomy).",
+    "  Phase 9  Discharge disposition gate — NHD vs home discharge",
+    "             Non-home (35%): 22% SNF (NUBC 03), 13% IRF/rehab (NUBC 62)",
+    "             Home    (65%): NUBC 01",
+    "",
+    "DEMOGRAPHIC COVARIATES — WHY NO MODULE STATES",
+    "----------------------------------------------",
+    "Synthea sets age, sex, and race at patient generation (synthea.properties)",
+    "before any module runs, so demographic prevalences cannot be set from inside",
+    "a Generic Module. The Iannuzzi pipeline reads these directly:",
+    "  age decades → person.year_of_birth (computed at index visit)",
+    "  female      → person.gender_concept_id",
+    "  nonwhite    → person.race_concept_id (NOT IN white_race concept set)",
+    "Age distribution in this module is shaped by Age_Guard + Indication_Onset_Delay",
+    "+ Age_Cap_Check; target ~30% age 60–69, ~35% age 70–79, ~25% age >=80",
+    "(major amputation cohorts skew older than OLER cohorts).",
+    "",
+    "NHD OUTCOME MODELLING",
+    "---------------------",
+    "Non-home discharge is a property of the index inpatient encounter, not a",
+    "post-discharge condition. The outcome is captured via discharge_disposition",
+    "on the EncounterEnd state (NUBC code written to encounters.csv DISCHARGE",
+    "column). The ETL maps NUBC codes to OMOP visit_occurrence.discharged_to_concept_id.",
+    "outcome_nhd.sql identifies outcome cohort members by discharged_to_concept_id",
+    "NOT IN the home concept set (NUBC 01/06, CMS PoS 8536, and Maps-to targets).",
+    "There is no Outcome_Onset / Outcome_Encounter / Outcome_Management state in",
+    "this module — non-home discharge is not a condition.",
+    "",
+    "NHD INCIDENCE ASSUMPTIONS",
+    "--------------------------",
+    "Overall NHD after major LE amputation: 60–75% in real-world registries",
+    "(higher than after OLER). This module enriches to 35% NHD to keep the",
+    "validation cohort balanced. RESEARCHER_ADJUSTS in Discharge_Disposition_Branch",
+    "to match the NHD prevalence in your validation population.",
+    "Non-home destination split (of NHD cases):",
+    "  SNF (NUBC 03) : 63% of NHD cases → 0.35 * 0.63 = ~22% of all patients",
+    "  IRF (NUBC 62) : 37% of NHD cases → 0.35 * 0.37 = ~13% of all patients",
+    "",
+    "CONCEPT CODES — VERIFIED",
+    "-------------------------",
+    "All source codes used in this module are [vocab query] verified. Reuse",
+    "provenance notes: ssi-val, nhd-val, macce-val, catalog entries.",
+    "  AKA procedure       : SNOMED 79733001  → OMOP 4195136  (verified 2026-05-14)",
+    "  BKA procedure       : SNOMED 88312006  → OMOP 4338257  (verified 2026-05-14)",
+    "  PAD indication      : SNOMED 399957001 → OMOP 317309   (verified 2026-05-14)",
+    "  DM (any)            : SNOMED 73211009  → OMOP 201820   (catalog 2026-04-02)",
+    "  Ischemic ulcer      : SNOMED 13954005  → OMOP 4029926  (nhd-val 2026-05-13)",
+    "  Ischemic gangrene   : SNOMED 402861007 → OMOP 4291464  (nhd-val 2026-05-13)",
+    "  COPD                : SNOMED 13645005  → OMOP 255573   (catalog 2026-04-02)",
+    "  Heart failure       : SNOMED 84114007  → OMOP 316139   (catalog 2026-04-02)",
+    "  Hypertension        : SNOMED 38341003  → OMOP 316866   (catalog 2026-04-02)",
+    "  Frailty             : SNOMED 248279007 → OMOP 4086506  (catalog 2026-04-02)",
+    "  Impaired mobility   : SNOMED 82971005  → OMOP 4306934  (catalog 2026-04-02)",
+    "  Walking aid use     : SNOMED 165251008 → OMOP 4012645  (nhd-val 2026-05-13)",
+    "  Insulin glargine    : RxNorm 274783    → OMOP 1502905  (nhd-val 2026-05-13)",
+    "  Hemoglobin (Hgb)    : LOINC  718-7     → OMOP 3000963  (macce-val)",
+    "  Hospital admission  : SNOMED 32485007                  (macce-val)",
+    "  Consultation        : SNOMED 11429006                  (macce-val)",
+    "",
+    "HOW TO REVISE",
+    "-------------",
+    "1. Edit prevalence values at any Covariate_*_Check state (search RESEARCHER_ADJUSTS).",
+    "2. Edit indication mix distributions at Indication_Assignment.",
+    "3. Edit AKA/BKA mix at Index_Procedure_Branch.",
+    "4. Edit NHD rate / SNF-vs-IRF split at Discharge_Disposition_Branch.",
+    "5. Re-run: Rscript workflow/03_generate_synthea_module_artifacts.R",
+    "6. Open synthea/modules/pad_amp_nhd.diagram.html to review.",
+    "7. Re-generate CSVs: bash workflow/04_generate_synthea_csv.sh"
+  ],
+  "states": {
+
+    "Initial": {
+      "type": "Initial",
+      "remarks": [
+        "Entry point. Transitions immediately to Age_Guard, which holds",
+        "patients below the minimum study age (60 years)."
+      ],
+      "direct_transition": "Age_Guard"
+    },
+
+    "Age_Guard": {
+      "type": "Guard",
+      "remarks": [
+        "Major LE amputation is predominantly a disease of patients aged 60+.",
+        "Guard set to 60 to focus the simulation on the realistic population.",
+        "The target cohort SQL enforces min_age_at_index = 18, so younger patients",
+        "would still be valid if generated.",
+        "RESEARCHER_ADJUSTS: change quantity to 18 to allow younger patients."
+      ],
+      "allow": {
+        "condition_type": "Age",
+        "operator": ">=",
+        "quantity": 60,
+        "unit": "years"
+      },
+      "direct_transition": "Indication_Onset_Delay"
+    },
+
+    "Indication_Onset_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "Random delay after age 60 before the qualifying indication develops.",
+        "Uniform(0, 25) years produces an onset age distribution of 60–85,",
+        "consistent with major amputation cohort age profiles.",
+        "RESEARCHER_ADJUSTS: change high to shift the index-age distribution."
+      ],
+      "range": {
+        "low": 0,
+        "high": 25,
+        "unit": "years"
+      },
+      "direct_transition": "Age_Cap_Check"
+    },
+
+    "Age_Cap_Check": {
+      "type": "Simple",
+      "remarks": [
+        "Cap to prevent simulation of implausibly aged amputation patients.",
+        "Patients over 95 at indication onset exit without procedure records.",
+        "RESEARCHER_ADJUSTS: change quantity to 120 to disable the cap."
+      ],
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Age",
+            "operator": ">",
+            "quantity": 95,
+            "unit": "years"
+          },
+          "transition": "Terminal_Age_Exceeded"
+        },
+        {
+          "transition": "Indication_Assignment"
+        }
+      ]
+    },
+
+    "Terminal_Age_Exceeded": {
+      "type": "Terminal"
+    },
+
+    "Indication_Assignment": {
+      "type": "Simple",
+      "remarks": [
+        "INDICATION GATE — assigns each patient to one of five clinical phenotypes.",
+        "Every path issues at least one condition concept that satisfies the",
+        "PAD / DM / wound eligibility OR-clause in cohorts/target_amputation.sql.",
+        "",
+        "Path distribution (RESEARCHER_ADJUSTS to match local registry mix):",
+        "  35% PAD only           — chronic PAD, no documented DM/wound",
+        "  25% PAD + DM           — most common dual indication in dysvascular cohorts",
+        "  15% DM only            — diabetic foot complications without coded PAD",
+        "  15% PAD + Wound        — CLI with ischemic ulcer/gangrene",
+        "  10% Wound only         — chronic wound (e.g., diabetic foot ulcer) without coded PAD",
+        "",
+        "Note: the covariate cascade (Phase 4) separately ADDS DM and tissue-loss",
+        "conditions with their own prevalences. Some path overlap is intentional —",
+        "the OMOP CDM will dedupe at the patient level when the risk score pipeline",
+        "queries for indication / mFI-5 covariate presence."
+      ],
+      "distributed_transition": [
+        {
+          "distribution": 0.35,
+          "transition": "Indication_PAD_Only_Onset"
+        },
+        {
+          "distribution": 0.25,
+          "transition": "Indication_PAD_Plus_DM_PAD"
+        },
+        {
+          "distribution": 0.15,
+          "transition": "Indication_DM_Only_Onset"
+        },
+        {
+          "distribution": 0.15,
+          "transition": "Indication_PAD_Plus_Wound_PAD"
+        },
+        {
+          "distribution": 0.10,
+          "transition": "Indication_Wound_Only_Onset"
+        }
+      ]
+    },
+
+    "Indication_PAD_Only_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Path 1: PAD-only indication. Issues PAD ConditionOnset and routes",
+        "directly to Indication_Diagnosis_Encounter.",
+        "SNOMED 399957001 → OMOP 317309 (verified 2026-05-14)."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "399957001", "display": "Peripheral arterial disease" }
+      ],
+      "assign_to_attribute": "indication",
+      "direct_transition": "Indication_Diagnosis_Encounter"
+    },
+
+    "Indication_PAD_Plus_DM_PAD": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Path 2 step 1: PAD ConditionOnset for PAD+DM dual-indication path.",
+        "Synthea ConditionOnset states have a fixed direct_transition, so the",
+        "PAD+DM pair is modelled as a two-state sequence rather than a single",
+        "state issuing two codes."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "399957001", "display": "Peripheral arterial disease" }
+      ],
+      "assign_to_attribute": "indication",
+      "direct_transition": "Indication_PAD_Plus_DM_DM"
+    },
+
+    "Indication_PAD_Plus_DM_DM": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Path 2 step 2: Diabetes mellitus ConditionOnset for PAD+DM dual-indication path.",
+        "SNOMED 73211009 → OMOP 201820 (verified 2026-04-02 in catalog)."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "73211009", "display": "Diabetes mellitus" }
+      ],
+      "direct_transition": "Indication_Diagnosis_Encounter"
+    },
+
+    "Indication_DM_Only_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Path 3: DM-only indication (diabetic foot complications without coded PAD)."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "73211009", "display": "Diabetes mellitus" }
+      ],
+      "assign_to_attribute": "indication",
+      "direct_transition": "Indication_Diagnosis_Encounter"
+    },
+
+    "Indication_PAD_Plus_Wound_PAD": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Path 4 step 1: PAD ConditionOnset for PAD+Wound (CLI) path."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "399957001", "display": "Peripheral arterial disease" }
+      ],
+      "assign_to_attribute": "indication",
+      "direct_transition": "Indication_PAD_Plus_Wound_Wound"
+    },
+
+    "Indication_PAD_Plus_Wound_Wound": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Path 4 step 2: Ischemic ulcer ConditionOnset for PAD+Wound path.",
+        "SNOMED 13954005 → OMOP 4029926 (verified nhd-val 2026-05-13).",
+        "This concept is a descendant of cohorts/target_amputation.sql's wound",
+        "ancestor 197304 Ulcer of lower extremity, so the cohort SQL picks it up."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "13954005", "display": "Ischemic ulcer" }
+      ],
+      "direct_transition": "Indication_Diagnosis_Encounter"
+    },
+
+    "Indication_Wound_Only_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Path 5: Wound-only indication (chronic LE wound without coded PAD/DM).",
+        "SNOMED 13954005 Ischemic ulcer used here for consistency with the catalog",
+        "tissue_loss entry; it is a descendant of target_amputation.sql's 197304",
+        "Ulcer of lower extremity ancestor."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "13954005", "display": "Ischemic ulcer" }
+      ],
+      "assign_to_attribute": "indication",
+      "direct_transition": "Indication_Diagnosis_Encounter"
+    },
+
+    "Indication_Diagnosis_Encounter": {
+      "type": "Encounter",
+      "remarks": [
+        "Outpatient vascular / wound-care consultation in which the indication",
+        "is documented and preoperative risk factors (covariates) are assessed.",
+        "This encounter stays OPEN through the entire covariate cascade and is",
+        "closed at Treatment_Strategy via the path-end EncounterEnd states.",
+        "SNOMED 11429006 Consultation [vocab query — macce-val]."
+      ],
+      "encounter_class": "outpatient",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "11429006", "display": "Consultation" }
+      ],
+      "reason": "indication",
+      "direct_transition": "Ambu_Deficit_Check"
+    },
+
+    "Ambu_Deficit_Check": {
+      "type": "Simple",
+      "remarks": [
+        "IANNUZZI 2020 COMPONENT: Ambulatory deficit — 3 points.",
+        "Use of any walking aid documented preoperatively.",
+        "Prevalence: ~20% of OLER patients (likely higher in amputation cohorts;",
+        "RESEARCHER_ADJUSTS upward if your registry shows >20%).",
+        "Maps to covariates.csv row: ambu_deficit (Observation domain)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.20, "transition": "Ambu_Deficit_Onset" },
+        { "distribution": 0.80, "transition": "Insulin_Check" }
+      ]
+    },
+
+    "Ambu_Deficit_Onset": {
+      "type": "Observation",
+      "remarks": [
+        "Walking aid use — SNOMED 165251008 → OMOP 4012645 (Observation domain).",
+        "Verified nhd-val 2026-05-13.",
+        "value 1 = boolean presence of walking aid use."
+      ],
+      "category": "social-history",
+      "unit": "{presence}",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "165251008", "display": "Walking aid use" }
+      ],
+      "exact": { "quantity": 1 },
+      "assign_to_attribute": "ambu_deficit",
+      "direct_transition": "Insulin_Check"
+    },
+
+    "Insulin_Check": {
+      "type": "Simple",
+      "remarks": [
+        "IANNUZZI 2020 COMPONENT: Insulin-dependent diabetes — 2 points.",
+        "Operationalised as active insulin drug exposure preoperatively.",
+        "Prevalence: ~16% (raise to ~25–30% if your amputation cohort has high",
+        "diabetic representation)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.16, "transition": "Insulin_Order" },
+        { "distribution": 0.84, "transition": "Anemia_Check" }
+      ]
+    },
+
+    "Insulin_Order": {
+      "type": "MedicationOrder",
+      "remarks": [
+        "Insulin glargine — RxNorm 274783 → OMOP 1502905.",
+        "Verified nhd-val 2026-05-13. Descendant of ATC 21600713 INSULINS AND",
+        "ANALOGUES (catalog insulin_dependent_diabetes_drug), which is the rollup",
+        "ancestor used in covariate_concepts.csv row insulin_dep."
+      ],
+      "codes": [
+        { "system": "RxNorm", "code": "274783", "display": "insulin glargine" }
+      ],
+      "dosage": { "amount": 1, "frequency": 1, "period": 1, "unit": "days" },
+      "duration": { "low": 60, "high": 180, "unit": "days" },
+      "reason": "indication",
+      "direct_transition": "Anemia_Check"
+    },
+
+    "Anemia_Check": {
+      "type": "Simple",
+      "remarks": [
+        "IANNUZZI 2020 COMPONENT: Anemia (Hgb < 10 g/dL) — 2 points.",
+        "Hgb is measured for ALL patients (standard pre-surgical workup) so that",
+        "the missing_is_negative = FALSE flag in covariates.csv does not mark",
+        "any synthetic patient unknown. 11% receive a low value (5.5–9.9 g/dL);",
+        "89% receive a normal value (10.0–17.0 g/dL).",
+        "LOINC 718-7 Hemoglobin [vocab query — macce-val]."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.11, "transition": "Anemia_Hgb_Low" },
+        { "distribution": 0.89, "transition": "Anemia_Hgb_Normal" }
+      ]
+    },
+
+    "Anemia_Hgb_Low": {
+      "type": "Observation",
+      "remarks": [
+        "Haemoglobin below 10 g/dL — anaemia threshold for the Iannuzzi score.",
+        "Range 5.5–9.9 g/dL = moderate-to-severe anaemia in pre-surgical patients."
+      ],
+      "category": "laboratory",
+      "codes": [
+        { "system": "LOINC", "code": "718-7", "display": "Hemoglobin [Mass/volume] in Blood" }
+      ],
+      "range": { "low": 5.5, "high": 9.9 },
+      "unit": "g/dL",
+      "direct_transition": "COPD_Check"
+    },
+
+    "Anemia_Hgb_Normal": {
+      "type": "Observation",
+      "remarks": [
+        "Normal haemoglobin — patient does not meet anaemia criterion.",
+        "Range 10.0–17.0 g/dL covers the normal-to-mildly-reduced spectrum."
+      ],
+      "category": "laboratory",
+      "codes": [
+        { "system": "LOINC", "code": "718-7", "display": "Hemoglobin [Mass/volume] in Blood" }
+      ],
+      "range": { "low": 10.0, "high": 17.0 },
+      "unit": "g/dL",
+      "direct_transition": "COPD_Check"
+    },
+
+    "COPD_Check": {
+      "type": "Simple",
+      "remarks": [
+        "mFI-5 COMPONENT: Chronic obstructive pulmonary disease — 1 pt.",
+        "Prevalence: 15% in major-amputation cohorts (smoking-driven dysvascular",
+        "population)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.15, "transition": "COPD_Onset" },
+        { "distribution": 0.85, "transition": "CHF_Check" }
+      ]
+    },
+
+    "COPD_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Chronic obstructive pulmonary disease — SNOMED 13645005 → OMOP 255573",
+        "(catalog 2026-04-02)."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "13645005", "display": "Chronic obstructive lung disease" }
+      ],
+      "assign_to_attribute": "copd",
+      "direct_transition": "CHF_Check"
+    },
+
+    "CHF_Check": {
+      "type": "Simple",
+      "remarks": [
+        "mFI-5 COMPONENT: Congestive heart failure — 1 pt.",
+        "Subramaniam 2018 specifies CHF within 30 days prior to surgery; this",
+        "module issues CHF during the indication encounter, which is within the",
+        "pre-op window (Pre_Index_Workup_Delay = 7–90 days; some encounters fall",
+        "inside the 30-day window). For tighter timing, move CHF_Onset to a state",
+        "after Pre_Index_Workup_Delay.",
+        "Prevalence: 20% in elderly major-amputation cohorts."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.20, "transition": "CHF_Onset" },
+        { "distribution": 0.80, "transition": "HTN_Check" }
+      ]
+    },
+
+    "CHF_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Heart failure — SNOMED 84114007 → OMOP 316139 (catalog 2026-04-02)."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "84114007", "display": "Heart failure" }
+      ],
+      "assign_to_attribute": "chf",
+      "direct_transition": "HTN_Check"
+    },
+
+    "HTN_Check": {
+      "type": "Simple",
+      "remarks": [
+        "mFI-5 COMPONENT: Hypertension — 1 pt.",
+        "Subramaniam specifies HTN requiring medication. This module does not",
+        "issue an antihypertensive MedicationOrder — the covariate set queries",
+        "the SNOMED hypertension condition (mFI-5 captures most treated HTN).",
+        "Prevalence: 65% in elderly major-amputation cohorts (very common)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.65, "transition": "HTN_Onset" },
+        { "distribution": 0.35, "transition": "FS_Dep_Check" }
+      ]
+    },
+
+    "HTN_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Hypertensive disorder — SNOMED 38341003 → OMOP 316866 (catalog 2026-04-02)."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "38341003", "display": "Hypertensive disorder" }
+      ],
+      "assign_to_attribute": "htn",
+      "direct_transition": "FS_Dep_Check"
+    },
+
+    "FS_Dep_Check": {
+      "type": "Simple",
+      "remarks": [
+        "mFI-5 COMPONENT: Dependent functional status — 1 pt.",
+        "Operationalised here as ConditionOnset of either Frailty (4086506) or",
+        "Impaired mobility (4306934) — the two ancestor concepts used in",
+        "covariate_concepts_mfi5.csv row fs_dep. The Iannuzzi ambu_deficit",
+        "covariate is intentionally separate (walking aid use observation).",
+        "Prevalence: 25% (functional dependence in elderly amputation cohorts)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.25, "transition": "FS_Dep_Type_Branch" },
+        { "distribution": 0.75, "transition": "Treatment_Strategy" }
+      ]
+    },
+
+    "FS_Dep_Type_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "Split fs_dep between the two ancestor concepts in covariate_concepts_mfi5.csv",
+        "so both branches are exercised in synthetic data. Mix: 60% Frailty, 40%",
+        "Impaired mobility."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.60, "transition": "FS_Dep_Frailty" },
+        { "distribution": 0.40, "transition": "FS_Dep_Impaired_Mobility" }
+      ]
+    },
+
+    "FS_Dep_Frailty": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Frailty — SNOMED 248279007 → OMOP 4086506 (catalog 2026-04-02).",
+        "Descendants include Frail elderly, Clinical frailty scale, Mild/Moderate/",
+        "Severe frailty (5 standard descendants in this vocab build)."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "248279007", "display": "Frailty" }
+      ],
+      "assign_to_attribute": "fs_dep",
+      "direct_transition": "Treatment_Strategy"
+    },
+
+    "FS_Dep_Impaired_Mobility": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Impaired mobility — SNOMED 82971005 → OMOP 4306934 (catalog 2026-04-02).",
+        "9 descendants including Bed-ridden, Confined to chair, Needs walking aid",
+        "in home, Mobility poor/very poor."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "82971005", "display": "Impaired mobility" }
+      ],
+      "assign_to_attribute": "fs_dep",
+      "direct_transition": "Treatment_Strategy"
+    },
+
+    "Treatment_Strategy": {
+      "type": "Simple",
+      "remarks": [
+        "OVERSAMPLING DECISION POINT",
+        "----------------------------",
+        "Routes 10% of patients to a non-exposed pathway (no amputation, exit",
+        "without index visit) and 90% to the inpatient amputation pathway.",
+        "This aggressive oversampling enriches the validation cohort with index",
+        "events for NHD outcome modelling.",
+        "Real-world: only a fraction of patients with PAD/DM/wound progress to",
+        "major amputation. Document the institutional proportion if known.",
+        "",
+        "RESEARCHER_ADJUSTS: tune Non_Exposed_Path_End distribution to your mix.",
+        "",
+        "Also closes the outpatient indication encounter via the path-end",
+        "EncounterEnd states (Synthea allows one active encounter at a time)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.10, "transition": "Non_Exposed_Path_End" },
+        { "distribution": 0.90, "transition": "Target_Exposed_Path_End" }
+      ]
+    },
+
+    "Non_Exposed_Path_End": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Closes the outpatient indication encounter for non-exposed patients.",
+        "These patients exit without an amputation procedure or discharge record."
+      ],
+      "direct_transition": "Terminal_Non_Exposed"
+    },
+
+    "Terminal_Non_Exposed": {
+      "type": "Terminal"
+    },
+
+    "Target_Exposed_Path_End": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Closes the outpatient indication encounter for patients proceeding to",
+        "major amputation. The inpatient encounter opens after Pre_Index_Workup_Delay."
+      ],
+      "direct_transition": "Pre_Index_Workup_Delay"
+    },
+
+    "Pre_Index_Workup_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "Time between outpatient indication consultation and inpatient amputation.",
+        "Major amputation is often urgent for advanced CLI / sepsis-from-wound;",
+        "the pre-op window is shorter than the OLER pathway.",
+        "RESEARCHER_ADJUSTS: set low and high (days).",
+        "  Urgent for sepsis / wet gangrene: 0–7 days.",
+        "  Standard subacute (this default): 7–90 days.",
+        "  Elective limb-salvage failure: 30–180 days."
+      ],
+      "range": { "low": 7, "high": 90, "unit": "days" },
+      "direct_transition": "Index_Admission_Encounter"
+    },
+
+    "Index_Admission_Encounter": {
+      "type": "Encounter",
+      "remarks": [
+        "Inpatient surgical admission for major LE amputation.",
+        "encounter_class = inpatient → OMOP visit_concept_id = 9201, matching",
+        "target_amputation.sql visit_concept_ids filter [9201].",
+        "SNOMED 32485007 Hospital admission [vocab query — macce-val]."
+      ],
+      "encounter_class": "inpatient",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "32485007", "display": "Hospital admission" }
+      ],
+      "reason": "indication",
+      "direct_transition": "Index_Procedure_Branch"
+    },
+
+    "Index_Procedure_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "Distributes patients across the two most common major-amputation levels.",
+        "Both are descendants of the ancestor concept IDs in study_params.yaml",
+        "target.index_event.ancestor_concept_ids:",
+        "  79733001 (AKA) → OMOP 4195136 Amputation above-knee",
+        "  88312006 (BKA) → OMOP 4338257 Amputation of leg through tibia/fibula",
+        "Real-world registries: roughly 40% AKA / 60% BKA, with the remainder",
+        "(through-knee, hip disart, hemipelvectomy, ankle disart) being rare.",
+        "RESEARCHER_ADJUSTS: shift toward AKA for elderly / non-ambulatory cohorts."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.40, "transition": "Index_AKA" },
+        { "distribution": 0.60, "transition": "Index_BKA" }
+      ]
+    },
+
+    "Index_AKA": {
+      "type": "Procedure",
+      "remarks": [
+        "Above-knee amputation (AKA / transfemoral).",
+        "SNOMED 79733001 → OMOP 4195136 (verified 2026-05-14; the SNOMED stored",
+        "code is shared with the internationally-coded BKA SNOMED 79733001 but",
+        "this OMOP concept's name, descendants, and Maps-to relations (CPT 27590,",
+        "ICD9-Proc 84.17) confirm AKA — see catalog notes for major_amputation).",
+        "Duration: major open amputation typically 60–180 min."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "79733001", "display": "Amputation above-knee" }
+      ],
+      "duration": { "low": 60, "high": 180, "unit": "minutes" },
+      "direct_transition": "Post_Index_Inpatient_Stay"
+    },
+
+    "Index_BKA": {
+      "type": "Procedure",
+      "remarks": [
+        "Below-knee amputation (BKA / transtibial).",
+        "SNOMED 88312006 → OMOP 4338257 Amputation of leg through tibia and",
+        "fibula (verified 2026-05-14). Duration: 60–150 min."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "88312006", "display": "Amputation of leg through tibia and fibula" }
+      ],
+      "duration": { "low": 60, "high": 150, "unit": "minutes" },
+      "direct_transition": "Post_Index_Inpatient_Stay"
+    },
+
+    "Post_Index_Inpatient_Stay": {
+      "type": "Delay",
+      "remarks": [
+        "Post-amputation inpatient stay. Major amputation LOS in major US",
+        "registries is typically 7–21 days (longer than OLER bypass / endarterectomy).",
+        "Longer LOS strongly predicts NHD via prolonged deconditioning and discharge",
+        "planning, but this module captures NHD via a fixed-probability gate rather",
+        "than LOS-conditional logic.",
+        "RESEARCHER_ADJUSTS: set low and high (days)."
+      ],
+      "range": { "low": 7, "high": 21, "unit": "days" },
+      "direct_transition": "Discharge_Disposition_Branch"
+    },
+
+    "Discharge_Disposition_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "NHD OUTCOME GATE — discharge destination decision point for the index",
+        "inpatient encounter.",
+        "Default non-home discharge rate: 35% (enriched lower than real-world",
+        "~60–75% post-amputation rate to keep validation cohort balanced).",
+        "  22% → SNF (skilled nursing facility, NUBC 03)",
+        "  13% → IRF (inpatient rehab facility, NUBC 62)",
+        "  65% → Home (routine discharge, NUBC 01)",
+        "",
+        "RESEARCHER_ADJUSTS: adjust to match NHD prevalence in your validation",
+        "population (real-world major-amputation NHD = 60–75%).",
+        "",
+        "OMOP mapping (ETL maps NUBC → OMOP discharged_to_concept_id):",
+        "  NUBC 01 → 32210 → 8536  Home",
+        "  NUBC 03 → 32212 → 8546  SNF",
+        "  NUBC 62 → 32228 → 8920  Comprehensive IRF",
+        "outcome_nhd.sql classifies discharged_to_concept_id NOT IN home set as",
+        "the NHD outcome."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.22, "transition": "End_Admission_SNF" },
+        { "distribution": 0.13, "transition": "End_Admission_IRF" },
+        { "distribution": 0.65, "transition": "End_Admission_Home" }
+      ]
+    },
+
+    "End_Admission_SNF": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Discharge to skilled nursing facility (SNF) — non-home discharge.",
+        "NUBC 03 [vocab query — ssi-val]."
+      ],
+      "discharge_disposition": {
+        "system": "NUBC",
+        "code": "03",
+        "display": "Discharged/transferred to skilled nursing facility (SNF)"
+      },
+      "direct_transition": "Terminal"
+    },
+
+    "End_Admission_IRF": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Discharge to inpatient rehabilitation facility (IRF) — non-home discharge.",
+        "NUBC 62 [vocab query — ssi-val]."
+      ],
+      "discharge_disposition": {
+        "system": "NUBC",
+        "code": "62",
+        "display": "Discharged/transferred to an inpatient rehabilitation facility (IRF)"
+      },
+      "direct_transition": "Terminal"
+    },
+
+    "End_Admission_Home": {
+      "type": "EncounterEnd",
+      "remarks": [
+        "Routine discharge to home — NOT a non-home discharge outcome.",
+        "NUBC 01 [vocab query — ssi-val]. outcome_nhd.sql excludes this visit",
+        "from the outcome cohort."
+      ],
+      "discharge_disposition": {
+        "system": "NUBC",
+        "code": "01",
+        "display": "Discharged to home or self care (routine discharge)"
+      },
+      "direct_transition": "Terminal"
+    },
+
+    "Terminal": {
+      "type": "Terminal"
+    }
+
+  }
+}
