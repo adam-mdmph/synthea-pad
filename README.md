@@ -15,6 +15,7 @@ Each study has a **permanent, independent branch** that is **never merged back t
 | `pad-oler-macce-val` | [pad-oler-macce-val](https://github.com/adam-mdmph/pad-oler-macce-val) | 30-day MACCE after PAD revascularisation |
 | `pad-oler-ssi-val` | [pad-oler-ssi-val](https://github.com/adam-mdmph/pad-oler-ssi-val) | 90-day surgical site infection |
 | `pad-oler-nhd-val` | [pad-oler-nhd-val](https://github.com/adam-mdmph/pad-oler-nhd-val) | Non-home discharge (OLER cohort) |
+| `pad-amp-nhd-val` | [pad-amp-nhd-val](https://github.com/adam-mdmph/pad-amp-nhd-val) | Non-home discharge after major amputation |
 
 Study branches are tracked as `external/synthea` submodules in their respective study repos.
 To update a study's Synthea module, work inside `external/synthea` in the study repo and push
