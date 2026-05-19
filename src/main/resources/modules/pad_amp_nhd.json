@@ -60,7 +60,10 @@
     "           Close the outpatient encounter via path-end EncounterEnd states.",
     "  Phase 6  Pre-amputation workup delay (7–90 days — shorter than OLER pathway",
     "           because major amputation is often urgent for advanced CLI/wound).",
-    "  Phase 7  Inpatient amputation admission → AKA (40%) or BKA (60%) procedure",
+    "  Phase 7  Inpatient amputation admission. All exposed patients pass through",
+    "           PT (50%) and palliative care (10%) consult checks. Geriatric",
+    "           consult (30%) is gated to patients > 75 only.",
+    "           AKA (40%) or BKA (60%) procedure follows for all exposed patients.",
     "  Phase 8  Post-amputation inpatient stay (7–21 days — major amputation LOS",
     "           is typically longer than OLER bypass/endarterectomy).",
     "  Phase 9  Discharge disposition gate — NHD vs home discharge",
@@ -120,6 +123,19 @@
     "  Hemoglobin (Hgb)    : LOINC  718-7     → OMOP 3000963  (macce-val)",
     "  Hospital admission  : SNOMED 32485007                  (macce-val)",
     "  Consultation        : SNOMED 11429006                  (macce-val)",
+    "",
+    "PREOPERATIVE CONSULT CODES — [pretraining] — REQUIRE VOCAB QUERY",
+    "-----------------------------------------------------------------",
+    "The three preoperative consultation codes below are derived from AI",
+    "pretraining data only and have NOT been verified against the live",
+    "omop_vocab vocabulary build. Run concept_lookup.R before using them",
+    "in covariate_concepts.csv or any SQL. See Preop_Consult states.",
+    "  PT consult          : SNOMED 91251008  → OMOP 4238738  Physical therapy procedure      [vocab query 2026-05-19]",
+    "  Palliative consult  : SNOMED 713281006 → OMOP 37018932 Consultation for palliative care [vocab query 2026-05-19]",
+    "  Geriatric consult   : HCPCS  S0250     → OMOP 2721021  Comprehensive geriatric          [vocab query 2026-05-19]",
+    "                                                           assessment and treatment planning",
+    "  NOTE: Palliative and geriatric consult concepts are Observation domain in this",
+    "  vocabulary build — their module states use type Observation, not Procedure.",
     "",
     "HOW TO REVISE",
     "-------------",
@@ -678,6 +694,124 @@
         { "system": "SNOMED-CT", "code": "32485007", "display": "Hospital admission" }
       ],
       "reason": "indication",
+      "direct_transition": "PT_Consult_Check"
+    },
+
+    "PT_Consult_Check": {
+      "type": "Simple",
+      "remarks": [
+        "Preoperative physical therapy consultation — 50% of all exposed patients.",
+        "PT evaluation assesses functional baseline, ambulatory status, and",
+        "postoperative rehabilitation potential. Clinically relevant to the",
+        "mFI-5 fs_dep covariate and Iannuzzi ambu_deficit component.",
+        "RESEARCHER_ADJUSTS: change distribution to match local consultation rates."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.50, "transition": "PT_Consult_Procedure" },
+        { "distribution": 0.50, "transition": "Palliative_Consult_Check" }
+      ]
+    },
+
+    "PT_Consult_Procedure": {
+      "type": "Procedure",
+      "remarks": [
+        "Physical therapy consultation during the index inpatient encounter.",
+        "Recorded as procedure_occurrence in OMOP (Procedure domain).",
+        "SNOMED 91251008 → OMOP 4238738 Physical therapy procedure [vocab query 2026-05-19]."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "91251008", "display": "Physical therapy procedure" }
+      ],
+      "duration": { "low": 30, "high": 60, "unit": "minutes" },
+      "direct_transition": "Palliative_Consult_Check"
+    },
+
+    "Palliative_Consult_Check": {
+      "type": "Simple",
+      "remarks": [
+        "Preoperative palliative care consultation — 10% of all exposed patients.",
+        "Triggered by high comorbidity burden, functional decline, or goals-of-care",
+        "discussions prior to major amputation.",
+        "RESEARCHER_ADJUSTS: change distribution to match local consultation rates."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.10, "transition": "Palliative_Consult_Procedure" },
+        { "distribution": 0.90, "transition": "Geriatric_Consult_Age_Check" }
+      ]
+    },
+
+    "Palliative_Consult_Procedure": {
+      "type": "Observation",
+      "remarks": [
+        "Palliative care consultation during the index inpatient encounter.",
+        "Observation domain in this vocabulary build — recorded as observation_occurrence.",
+        "SNOMED 713281006 → OMOP 37018932 Consultation for palliative care [vocab query 2026-05-19].",
+        "Original pretraining code 103735009 mapped to OMOP 4014023 'Palliative care'",
+        "(also Observation domain but is a general concept, not a consultation event)."
+      ],
+      "category": "procedure",
+      "unit": "{presence}",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "713281006", "display": "Consultation for palliative care" }
+      ],
+      "exact": { "quantity": 1 },
+      "direct_transition": "Geriatric_Consult_Age_Check"
+    },
+
+    "Geriatric_Consult_Age_Check": {
+      "type": "Simple",
+      "remarks": [
+        "Age gate for geriatric consultation: only patients > 75 proceed to",
+        "Geriatric_Consult_Check. Younger patients skip directly to",
+        "Index_Procedure_Branch. PT and palliative consults are not age-gated."
+      ],
+      "conditional_transition": [
+        {
+          "condition": {
+            "condition_type": "Age",
+            "operator": ">",
+            "quantity": 75,
+            "unit": "years"
+          },
+          "transition": "Geriatric_Consult_Check"
+        },
+        {
+          "transition": "Index_Procedure_Branch"
+        }
+      ]
+    },
+
+    "Geriatric_Consult_Check": {
+      "type": "Simple",
+      "remarks": [
+        "Preoperative geriatric consultation — 30% of patients > 75.",
+        "Geriatric evaluation addresses frailty, cognitive status, polypharmacy,",
+        "and perioperative risk optimisation in elderly major-amputation patients.",
+        "Clinically relevant to mFI-5 fs_dep and Iannuzzi ambu_deficit components.",
+        "RESEARCHER_ADJUSTS: change distribution to match local consultation rates."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.30, "transition": "Geriatric_Consult_Procedure" },
+        { "distribution": 0.70, "transition": "Index_Procedure_Branch" }
+      ]
+    },
+
+    "Geriatric_Consult_Procedure": {
+      "type": "Observation",
+      "remarks": [
+        "Comprehensive geriatric assessment during the index inpatient encounter.",
+        "Observation domain in this vocabulary build — recorded as observation_occurrence.",
+        "HCPCS S0250 → OMOP 2721021 'Comprehensive geriatric assessment and treatment",
+        "planning performed by assessment team' [vocab query 2026-05-19].",
+        "Original pretraining code SNOMED 308335008 mapped to OMOP 4203722",
+        "'Patient encounter procedure' — a generic encounter concept, not geriatric-specific."
+      ],
+      "category": "procedure",
+      "unit": "{presence}",
+      "codes": [
+        { "system": "HCPCS", "code": "S0250", "display": "Comprehensive geriatric assessment and treatment planning performed by assessment team" }
+      ],
+      "exact": { "quantity": 1 },
       "direct_transition": "Index_Procedure_Branch"
     },
 
