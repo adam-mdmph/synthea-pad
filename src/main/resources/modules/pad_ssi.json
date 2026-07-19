@@ -71,7 +71,7 @@
     "  SSI condition          : SNOMED-CT 433202001",
     "  Debridement (re-op)    : SNOMED-CT 225148005",
     "  Ankle-brachial index   : LOINC     77194-9",
-    "  Wound culture          : LOINC     6463-4",
+    "  Wound culture (aerobe) : LOINC     632-0",
     "  Tobacco smoking status : LOINC     72166-2",
     "  BMI                    : LOINC     39156-5",
     "  Transferring (Barthel) : LOINC     83185-9",
@@ -1217,17 +1217,61 @@
           "display": "Follow-up encounter"
         }
       ],
-      "direct_transition": "Wound_Culture_Superficial"
+      "direct_transition": "Culture_Branch_Superficial"
     },
 
-    "Wound_Culture_Superficial": {
+    "Culture_Branch_Superficial": {
+      "type": "Simple",
+      "remarks": [
+        "Organism class distribution for post-discharge superficial incisional SSI cultures.",
+        "Literature-based vascular SSI distribution: Gram-positive 45%, Gram-negative 25%,",
+        "Polymicrobial 20% (two sequential observations, same LOINC + encounter),",
+        "No growth 10%.",
+        "Measurement LOINC 632-0 (OMOP concept 3013146, Bacteria identified in Wound by",
+        "Aerobe culture) verified 2026-05-15 against phenotype_library/catalog.yaml entry",
+        "ssi_culture_organism_class, role: culture_result_order.",
+        "Species SNOMED codes: S. aureus (3092008), E. coli (112283007), No growth (264868006) verified 2026-05-15."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.45, "transition": "Culture_GramPos_Superficial" },
+        { "distribution": 0.25, "transition": "Culture_GramNeg_Superficial" },
+        { "distribution": 0.20, "transition": "Culture_Poly_GramPos_Superficial" },
+        { "distribution": 0.10, "transition": "Culture_NoGrowth_Superficial" }
+      ]
+    },
+
+    "Culture_GramPos_Superficial": {
       "type": "Observation",
       "category": "laboratory",
       "codes": [
         {
           "system": "LOINC",
-          "code": "6463-4",
-          "display": "Bacteria identified in Wound by Culture"
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 3092008 -> OMOP 4149419 (Staphylococcus aureus); descendant of OMOP 4337977 (Gram-positive bacteria) via concept_ancestor.",
+        "2,745 standard descendants via concept_ancestor: S. aureus (4149419), MRSA (4019195),",
+        "MSSA (4168510), Streptococcus (4240344), Enterococcus (4101235), etc.",
+        "Verified 2026-05-15 (catalog: ssi_culture_organism_class, role: organism_gram_positive)."
+      ],
+      "direct_transition": "SSI_Abx_Superficial"
+    },
+
+    "Culture_GramNeg_Superficial": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
         }
       ],
       "value_code": {
@@ -1235,6 +1279,80 @@
         "code": "112283007",
         "display": "Escherichia coli"
       },
+      "remarks": [
+        "[vocab query] SNOMED 112283007 -> OMOP 4011683 (Escherichia coli); descendant of OMOP 4217941 (Gram-negative bacterium) via concept_ancestor.",
+        "8,904 standard descendants: E. coli, Pseudomonas, Klebsiella, Enterobacter, etc.",
+        "Verified 2026-05-15 (catalog: ssi_culture_organism_class, role: organism_gram_negative)."
+      ],
+      "direct_transition": "SSI_Abx_Superficial"
+    },
+
+    "Culture_Poly_GramPos_Superficial": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "First organism of a polymicrobial result; paired with Culture_Poly_GramNeg_Superficial.",
+        "The ssi_culture_characterization R code groups all value_as_concept_id records sharing",
+        "the same measurement_concept_id and encounter window; one Gram-pos + one Gram-neg",
+        "record in the same encounter triggers the polymicrobial classification."
+      ],
+      "direct_transition": "Culture_Poly_GramNeg_Superficial"
+    },
+
+    "Culture_Poly_GramNeg_Superficial": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "112283007",
+        "display": "Escherichia coli"
+      },
+      "remarks": [
+        "Second organism of a polymicrobial result; paired with Culture_Poly_GramPos_Superficial.",
+        "Both observations share LOINC 632-0 and the same outpatient SSI encounter."
+      ],
+      "direct_transition": "SSI_Abx_Superficial"
+    },
+
+    "Culture_NoGrowth_Superficial": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "264868006",
+        "display": "No growth"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 264868006 -> OMOP 4139623 (No growth, Qualifier Value class).",
+        "Canonical value_as_concept_id for a negative wound culture result.",
+        "Verified 2026-05-15 (catalog: ssi_culture_organism_class, role: result_no_growth)."
+      ],
       "direct_transition": "SSI_Abx_Superficial"
     },
 
@@ -1304,17 +1422,53 @@
           "display": "Follow-up encounter"
         }
       ],
-      "direct_transition": "Wound_Culture_Deep"
+      "direct_transition": "Culture_Branch_Deep"
     },
 
-    "Wound_Culture_Deep": {
+    "Culture_Branch_Deep": {
+      "type": "Simple",
+      "remarks": [
+        "Organism class distribution for post-discharge deep incisional SSI cultures.",
+        "Same 45/25/20/10 distribution as the superficial branch; deep SSIs are more",
+        "frequently polymicrobial in practice but kept uniform here for simplicity."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.45, "transition": "Culture_GramPos_Deep" },
+        { "distribution": 0.25, "transition": "Culture_GramNeg_Deep" },
+        { "distribution": 0.20, "transition": "Culture_Poly_GramPos_Deep" },
+        { "distribution": 0.10, "transition": "Culture_NoGrowth_Deep" }
+      ]
+    },
+
+    "Culture_GramPos_Deep": {
       "type": "Observation",
       "category": "laboratory",
       "codes": [
         {
           "system": "LOINC",
-          "code": "6463-4",
-          "display": "Bacteria identified in Wound by Culture"
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 3092008 -> OMOP 4149419 (Staphylococcus aureus); rolls up to Gram-pos (4337977) via concept_ancestor."
+      ],
+      "direct_transition": "SSI_Abx_Deep"
+    },
+
+    "Culture_GramNeg_Deep": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
         }
       ],
       "value_code": {
@@ -1322,6 +1476,72 @@
         "code": "112283007",
         "display": "Escherichia coli"
       },
+      "remarks": [
+        "[vocab query] SNOMED 112283007 -> OMOP 4011683 (Escherichia coli); rolls up to Gram-neg (4217941) via concept_ancestor."
+      ],
+      "direct_transition": "SSI_Abx_Deep"
+    },
+
+    "Culture_Poly_GramPos_Deep": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "First organism of a polymicrobial deep-SSI culture result."
+      ],
+      "direct_transition": "Culture_Poly_GramNeg_Deep"
+    },
+
+    "Culture_Poly_GramNeg_Deep": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "112283007",
+        "display": "Escherichia coli"
+      },
+      "remarks": [
+        "Second organism of a polymicrobial deep-SSI culture result."
+      ],
+      "direct_transition": "SSI_Abx_Deep"
+    },
+
+    "Culture_NoGrowth_Deep": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "264868006",
+        "display": "No growth"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 264868006 -> OMOP 4139623. Verified 2026-05-15 (catalog: ssi_culture_organism_class)."
+      ],
       "direct_transition": "SSI_Abx_Deep"
     },
 
@@ -1442,17 +1662,52 @@
           "display": "Follow-up encounter"
         }
       ],
-      "direct_transition": "Wound_Culture_Organ"
+      "direct_transition": "Culture_Branch_Organ"
     },
 
-    "Wound_Culture_Organ": {
+    "Culture_Branch_Organ": {
+      "type": "Simple",
+      "remarks": [
+        "Organism class distribution for post-discharge organ-space SSI cultures.",
+        "Same 45/25/20/10 distribution applied uniformly across all SSI types."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.45, "transition": "Culture_GramPos_Organ" },
+        { "distribution": 0.25, "transition": "Culture_GramNeg_Organ" },
+        { "distribution": 0.20, "transition": "Culture_Poly_GramPos_Organ" },
+        { "distribution": 0.10, "transition": "Culture_NoGrowth_Organ" }
+      ]
+    },
+
+    "Culture_GramPos_Organ": {
       "type": "Observation",
       "category": "laboratory",
       "codes": [
         {
           "system": "LOINC",
-          "code": "6463-4",
-          "display": "Bacteria identified in Wound by Culture"
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 3092008 -> OMOP 4149419 (Staphylococcus aureus); rolls up to Gram-pos (4337977) via concept_ancestor."
+      ],
+      "direct_transition": "SSI_Abx_Organ"
+    },
+
+    "Culture_GramNeg_Organ": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
         }
       ],
       "value_code": {
@@ -1460,6 +1715,72 @@
         "code": "112283007",
         "display": "Escherichia coli"
       },
+      "remarks": [
+        "[vocab query] SNOMED 112283007 -> OMOP 4011683 (Escherichia coli); rolls up to Gram-neg (4217941) via concept_ancestor."
+      ],
+      "direct_transition": "SSI_Abx_Organ"
+    },
+
+    "Culture_Poly_GramPos_Organ": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "First organism of a polymicrobial organ-space SSI culture result."
+      ],
+      "direct_transition": "Culture_Poly_GramNeg_Organ"
+    },
+
+    "Culture_Poly_GramNeg_Organ": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "112283007",
+        "display": "Escherichia coli"
+      },
+      "remarks": [
+        "Second organism of a polymicrobial organ-space SSI culture result."
+      ],
+      "direct_transition": "SSI_Abx_Organ"
+    },
+
+    "Culture_NoGrowth_Organ": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "264868006",
+        "display": "No growth"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 264868006 -> OMOP 4139623. Verified 2026-05-15 (catalog: ssi_culture_organism_class)."
+      ],
       "direct_transition": "SSI_Abx_Organ"
     },
 
@@ -1572,17 +1893,52 @@
           "display": "Superficial incisional surgical site infection"
         }
       ],
-      "direct_transition": "Inpatient_Wound_Culture_Superficial"
+      "direct_transition": "Culture_Branch_Inpatient_Superficial"
     },
 
-    "Inpatient_Wound_Culture_Superficial": {
+    "Culture_Branch_Inpatient_Superficial": {
+      "type": "Simple",
+      "remarks": [
+        "Organism class distribution for inpatient superficial incisional SSI cultures.",
+        "Recorded inside the open Surgical_Admission_Encounter."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.45, "transition": "Culture_GramPos_Inpatient_Superficial" },
+        { "distribution": 0.25, "transition": "Culture_GramNeg_Inpatient_Superficial" },
+        { "distribution": 0.20, "transition": "Culture_Poly_GramPos_Inpatient_Superficial" },
+        { "distribution": 0.10, "transition": "Culture_NoGrowth_Inpatient_Superficial" }
+      ]
+    },
+
+    "Culture_GramPos_Inpatient_Superficial": {
       "type": "Observation",
       "category": "laboratory",
       "codes": [
         {
           "system": "LOINC",
-          "code": "6463-4",
-          "display": "Bacteria identified in Wound by Culture"
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 3092008 -> OMOP 4149419 (Staphylococcus aureus); rolls up to Gram-pos (4337977) via concept_ancestor."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Superficial"
+    },
+
+    "Culture_GramNeg_Inpatient_Superficial": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
         }
       ],
       "value_code": {
@@ -1590,6 +1946,72 @@
         "code": "112283007",
         "display": "Escherichia coli"
       },
+      "remarks": [
+        "[vocab query] SNOMED 112283007 -> OMOP 4011683 (Escherichia coli); rolls up to Gram-neg (4217941) via concept_ancestor."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Superficial"
+    },
+
+    "Culture_Poly_GramPos_Inpatient_Superficial": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "First organism of a polymicrobial inpatient superficial SSI culture result."
+      ],
+      "direct_transition": "Culture_Poly_GramNeg_Inpatient_Superficial"
+    },
+
+    "Culture_Poly_GramNeg_Inpatient_Superficial": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "112283007",
+        "display": "Escherichia coli"
+      },
+      "remarks": [
+        "Second organism of a polymicrobial inpatient superficial SSI culture result."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Superficial"
+    },
+
+    "Culture_NoGrowth_Inpatient_Superficial": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "264868006",
+        "display": "No growth"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 264868006 -> OMOP 4139623. Verified 2026-05-15 (catalog: ssi_culture_organism_class)."
+      ],
       "direct_transition": "Inpatient_SSI_Abx_Superficial"
     },
 
@@ -1651,17 +2073,52 @@
           "display": "Deep incisional surgical site infection"
         }
       ],
-      "direct_transition": "Inpatient_Wound_Culture_Deep"
+      "direct_transition": "Culture_Branch_Inpatient_Deep"
     },
 
-    "Inpatient_Wound_Culture_Deep": {
+    "Culture_Branch_Inpatient_Deep": {
+      "type": "Simple",
+      "remarks": [
+        "Organism class distribution for inpatient deep incisional SSI cultures.",
+        "Recorded inside the open Surgical_Admission_Encounter."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.45, "transition": "Culture_GramPos_Inpatient_Deep" },
+        { "distribution": 0.25, "transition": "Culture_GramNeg_Inpatient_Deep" },
+        { "distribution": 0.20, "transition": "Culture_Poly_GramPos_Inpatient_Deep" },
+        { "distribution": 0.10, "transition": "Culture_NoGrowth_Inpatient_Deep" }
+      ]
+    },
+
+    "Culture_GramPos_Inpatient_Deep": {
       "type": "Observation",
       "category": "laboratory",
       "codes": [
         {
           "system": "LOINC",
-          "code": "6463-4",
-          "display": "Bacteria identified in Wound by Culture"
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 3092008 -> OMOP 4149419 (Staphylococcus aureus); rolls up to Gram-pos (4337977) via concept_ancestor."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Deep"
+    },
+
+    "Culture_GramNeg_Inpatient_Deep": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
         }
       ],
       "value_code": {
@@ -1669,6 +2126,72 @@
         "code": "112283007",
         "display": "Escherichia coli"
       },
+      "remarks": [
+        "[vocab query] SNOMED 112283007 -> OMOP 4011683 (Escherichia coli); rolls up to Gram-neg (4217941) via concept_ancestor."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Deep"
+    },
+
+    "Culture_Poly_GramPos_Inpatient_Deep": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "First organism of a polymicrobial inpatient deep SSI culture result."
+      ],
+      "direct_transition": "Culture_Poly_GramNeg_Inpatient_Deep"
+    },
+
+    "Culture_Poly_GramNeg_Inpatient_Deep": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "112283007",
+        "display": "Escherichia coli"
+      },
+      "remarks": [
+        "Second organism of a polymicrobial inpatient deep SSI culture result."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Deep"
+    },
+
+    "Culture_NoGrowth_Inpatient_Deep": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "264868006",
+        "display": "No growth"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 264868006 -> OMOP 4139623. Verified 2026-05-15 (catalog: ssi_culture_organism_class)."
+      ],
       "direct_transition": "Inpatient_SSI_Abx_Deep"
     },
 
@@ -1739,17 +2262,52 @@
           "display": "Organ-space surgical site infection"
         }
       ],
-      "direct_transition": "Inpatient_Wound_Culture_Organ"
+      "direct_transition": "Culture_Branch_Inpatient_Organ"
     },
 
-    "Inpatient_Wound_Culture_Organ": {
+    "Culture_Branch_Inpatient_Organ": {
+      "type": "Simple",
+      "remarks": [
+        "Organism class distribution for inpatient organ-space SSI cultures.",
+        "Recorded inside the open Surgical_Admission_Encounter."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.45, "transition": "Culture_GramPos_Inpatient_Organ" },
+        { "distribution": 0.25, "transition": "Culture_GramNeg_Inpatient_Organ" },
+        { "distribution": 0.20, "transition": "Culture_Poly_GramPos_Inpatient_Organ" },
+        { "distribution": 0.10, "transition": "Culture_NoGrowth_Inpatient_Organ" }
+      ]
+    },
+
+    "Culture_GramPos_Inpatient_Organ": {
       "type": "Observation",
       "category": "laboratory",
       "codes": [
         {
           "system": "LOINC",
-          "code": "6463-4",
-          "display": "Bacteria identified in Wound by Culture"
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 3092008 -> OMOP 4149419 (Staphylococcus aureus); rolls up to Gram-pos (4337977) via concept_ancestor."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Organ"
+    },
+
+    "Culture_GramNeg_Inpatient_Organ": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
         }
       ],
       "value_code": {
@@ -1757,6 +2315,72 @@
         "code": "112283007",
         "display": "Escherichia coli"
       },
+      "remarks": [
+        "[vocab query] SNOMED 112283007 -> OMOP 4011683 (Escherichia coli); rolls up to Gram-neg (4217941) via concept_ancestor."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Organ"
+    },
+
+    "Culture_Poly_GramPos_Inpatient_Organ": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "3092008",
+        "display": "Staphylococcus aureus"
+      },
+      "remarks": [
+        "First organism of a polymicrobial inpatient organ-space SSI culture result."
+      ],
+      "direct_transition": "Culture_Poly_GramNeg_Inpatient_Organ"
+    },
+
+    "Culture_Poly_GramNeg_Inpatient_Organ": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "112283007",
+        "display": "Escherichia coli"
+      },
+      "remarks": [
+        "Second organism of a polymicrobial inpatient organ-space SSI culture result."
+      ],
+      "direct_transition": "Inpatient_SSI_Abx_Organ"
+    },
+
+    "Culture_NoGrowth_Inpatient_Organ": {
+      "type": "Observation",
+      "category": "laboratory",
+      "codes": [
+        {
+          "system": "LOINC",
+          "code": "632-0",
+          "display": "Bacteria identified in Wound by Aerobe culture"
+        }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT",
+        "code": "264868006",
+        "display": "No growth"
+      },
+      "remarks": [
+        "[vocab query] SNOMED 264868006 -> OMOP 4139623. Verified 2026-05-15 (catalog: ssi_culture_organism_class)."
+      ],
       "direct_transition": "Inpatient_SSI_Abx_Organ"
     },
 
