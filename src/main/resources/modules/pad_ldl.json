@@ -1,0 +1,1137 @@
+{
+  "name": "PAD Lower Extremity Revascularization with Lipid-Management Trajectory",
+  "remarks": [
+    "Models peripheral arterial disease (PAD) patients undergoing OPEN or ENDOVASCULAR",
+    "lower extremity revascularization (LER), with preoperative LDL cholesterol and lipid",
+    "medications and a one-year post-operative LDL trajectory + lipid-medication escalation.",
+    "Data-generation-only module for pad-ler-ldl-synth; consumed by pad-ler-ldl-desc.",
+    "",
+    "Design intent: preoperative LDL values and lipid-medication use are CONDITIONED on",
+    "baseline lipid-associated covariates (not drawn uniformly), and the post-operative",
+    "escalation + LDL response is concentrated in the statin-naive / high-LDL / FH strata,",
+    "so the LDL trajectory and medication changes are genuinely covariate-associated and",
+    "stratifiable by pad-ler-ldl-desc's Strategus characterization.",
+    "",
+    "Clinical workflow:",
+    "  1. PAD onset: age >= 55, Uniform(0,25)y delay, capped at 90.",
+    "  2. Outpatient PAD evaluation encounter — during which baseline covariates, preop LDL,",
+    "     and preop lipid medications are all recorded.",
+    "  3. Baseline lipid-associated covariates (drawn BEFORE LDL/meds so they condition them):",
+    "       diabetes 35%, obesity 40%, hypothyroidism 8%, malnutrition 10% (+ serum albumin),",
+    "       CKD 15%, current smoker 35%, familial hypercholesterolemia (FH) 4%.",
+    "       Sex is intrinsic to every Synthea person (no state needed) and is available to",
+    "       the downstream characterization as a demographic covariate.",
+    "  4. Preop LDL tier (priority): FH -> very high (185-235); malnutrition -> low (55-92,",
+    "       reverse-epidemiology); diabetes/obesity/hypothyroid -> high (135-168); else",
+    "       moderate (95-130). A high_risk_group attribute (FH or high tier) drives med rates.",
+    "  5. Preop lipid meds conditioned on risk group: statin 82% high-risk vs 52% standard;",
+    "       ezetimibe 20% vs 4%; PCSK9i (evolocumab) 30% among FH only. Every statin order",
+    "       (preop and postop-new-start) also assigns an INGREDIENT-level intensity: high-",
+    "       intensity-capable (atorvastatin) vs low/moderate-intensity-only (simvastatin),",
+    "       tracked via the statin_intensity attribute — skewed but not deterministic by risk",
+    "       group (85%/15% high-risk, 25%/75% standard preop; 65%/35% for a new postop start,",
+    "       reflecting a guideline-directed secondary-prevention indication regardless of",
+    "       preop risk tier). Feeds pad-ler-ldl-desc's cohorts 5/6 (statin_high_intensity_",
+    "       capable / statin_low_moderate_intensity_only in phenotype_library/catalog.yaml).",
+    "  6. Index LER, 50/50: OPEN (inpatient bypass/endarterectomy, rolls up under OMOP",
+    "       ancestors 4236706 + 4225375) vs ENDOVASCULAR (outpatient limb revascularization,",
+    "       rolls up under 4049825).",
+    "  7. First post-op clinic (~30-60d): guideline-directed escalation — statin-naive start",
+    "       a statin 75%; already-treated intensify (add ezetimibe) 45%; FH may add PCSK9i.",
+    "       Patients who end up on adequate therapy are flagged ldl_controlled_postop.",
+    "  8. Quarterly post-op LDL (Q1-Q4 across the year): controlled patients trend to goal;",
+    "       uncontrolled (statin-naive, untreated) stay 120-165. At Q4 (the 275-455d window",
+    "       pad-ler-ldl-desc's Analysis B reads), controlled patients on a high-intensity-",
+    "       capable statin genuinely cross the <55 mg/dL goal (40-58); controlled patients on",
+    "       low/moderate-intensity-only therapy improve but usually don't cross it (58-92) —",
+    "       this distinction is why cohorts 5/6 exist and is deliberate, not an oversight.",
+    "",
+    "Cohort definitions:",
+    "  Target  : first LER procedure (open OR endovascular), any visit type — see",
+    "            study_params.yaml target.index_event.ancestor_concept_ids [4236706,4225375,4049825].",
+    "  QC only : first LDL measurement per person (cohorts/outcome_ldl.sql) — a Step-6 signal",
+    "            check, NOT the authoritative outcome (that lives in pad-ler-ldl-desc).",
+    "",
+    "Primary concept codes ([vocab query] against this workspace's omop_vocab, 2026-07-23;",
+    "see phenotype_library/catalog.yaml):",
+    "  PAD condition                         : SNOMED 399957001 (OMOP 317309 hierarchy)",
+    "  OPEN LER (all roll up under 4236706 / 4225375):",
+    "    Femoro-popliteal bypass             : SNOMED 112828007 -> OMOP 4012936",
+    "    Femoral endarterectomy              : SNOMED 16589005  -> OMOP 4040974",
+    "    Aorto-femoral bypass (suprainguinal): SNOMED 405482000 -> OMOP 4231680",
+    "    Femoro-tibial bypass                : SNOMED 47575002  -> OMOP 4166196",
+    "    Femorofemoral crossover bypass      : SNOMED 233380006 -> OMOP 4049678",
+    "  ENDOVASCULAR LER (all roll up under 4049825 Limb revascularization):",
+    "    Revascularization of lower limb     : SNOMED 233505002 -> OMOP 4049828",
+    "    Revascularization of foot           : SNOMED 233507005 -> OMOP 4050419",
+    "    Revascularization of toe            : SNOMED 233508000 -> OMOP 4049829",
+    "  LDL cholesterol (calculated)          : LOINC 13457-7 -> OMOP 3028288 (desc of anchor 4012479)",
+    "  Serum albumin                         : LOINC 1751-7  -> OMOP 3024561",
+    "  Body mass index                       : LOINC 39156-5 -> OMOP 3038553",
+    "  Tobacco smoking status                : LOINC 72166-2",
+    "  Diabetes mellitus type 2              : SNOMED 44054006",
+    "  Obesity                               : SNOMED 414916001 -> OMOP 433736",
+    "  Hypothyroidism                        : SNOMED 40930008  -> OMOP 140673",
+    "  Nutritional disorder / malnutrition   : SNOMED 2492009   -> OMOP 4090739",
+    "  Chronic kidney disease                : SNOMED 709044004 -> OMOP 46271022",
+    "  Familial hypercholesterolemia         : SNOMED 398036000 -> OMOP 4134862",
+    "  atorvastatin (statin)                 : RxNorm 83367   (ingredient; ancestor of statin_medications set)",
+    "  ezetimibe                             : RxNorm 341248  (ingredient; ezetimibe_medications set)",
+    "  evolocumab (PCSK9i)                   : RxNorm 1665684 (ingredient; pcsk9_inhibitors set)",
+    "",
+    "Does NOT model: mortality, limb loss, non-lipid medications, LDL response to specific",
+    "drug/dose (escalation is modeled at the controlled/uncontrolled level), or lipid",
+    "measurements beyond one post-operative year."
+  ],
+  "states": {
+
+    "Initial": {
+      "type": "Initial",
+      "direct_transition": "Age_Guard"
+    },
+
+    "Age_Guard": {
+      "type": "Guard",
+      "allow": {
+        "condition_type": "Age",
+        "operator": ">=",
+        "quantity": 55,
+        "unit": "years"
+      },
+      "direct_transition": "PAD_Onset_Delay"
+    },
+
+    "PAD_Onset_Delay": {
+      "type": "Delay",
+      "remarks": ["PAD onset delay: Uniform(0,25) years after age 55 (onset age 55-80)."],
+      "range": { "low": 0, "high": 25, "unit": "years" },
+      "direct_transition": "Age_90_Check"
+    },
+
+    "Age_90_Check": {
+      "type": "Simple",
+      "remarks": ["Cap the PAD pathway at age 90 so procedure ages stay realistic."],
+      "conditional_transition": [
+        {
+          "condition": { "condition_type": "Age", "operator": "<=", "quantity": 90, "unit": "years" },
+          "transition": "PAD_Onset"
+        },
+        { "transition": "Terminal" }
+      ]
+    },
+
+    "PAD_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "399957001", "display": "Peripheral arterial occlusive disease" }
+      ],
+      "direct_transition": "PAD_Diagnosis_Encounter"
+    },
+
+    "PAD_Diagnosis_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "outpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "185349003", "display": "Encounter for check up" }
+      ],
+      "remarks": [
+        "Initial outpatient PAD evaluation. Baseline covariates, preop LDL, and preop lipid",
+        "medications are all documented during this single comprehensive visit."
+      ],
+      "direct_transition": "Diabetes_Chance"
+    },
+
+    "Diabetes_Chance": {
+      "type": "Simple",
+      "remarks": ["Type 2 diabetes prevalence in this surgical PAD population modeled at 35%."],
+      "distributed_transition": [
+        { "distribution": 0.35, "transition": "Diabetes_Onset" },
+        { "distribution": 0.65, "transition": "Obesity_Chance" }
+      ]
+    },
+
+    "Diabetes_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "44054006", "display": "Diabetes mellitus type 2" }
+      ],
+      "direct_transition": "Set_Metabolic_DM"
+    },
+
+    "Set_Metabolic_DM": {
+      "type": "SetAttribute",
+      "attribute": "metabolic",
+      "value": true,
+      "remarks": ["Diabetes raises the baseline LDL tier (metabolic dyslipidemia)."],
+      "direct_transition": "Obesity_Chance"
+    },
+
+    "Obesity_Chance": {
+      "type": "Simple",
+      "remarks": ["Obesity prevalence modeled at 40%."],
+      "distributed_transition": [
+        { "distribution": 0.40, "transition": "Obesity_Onset" },
+        { "distribution": 0.60, "transition": "BMI_NonObese_Observation" }
+      ]
+    },
+
+    "Obesity_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "414916001", "display": "Obesity" }
+      ],
+      "direct_transition": "Set_Metabolic_Obese"
+    },
+
+    "Set_Metabolic_Obese": {
+      "type": "SetAttribute",
+      "attribute": "metabolic",
+      "value": true,
+      "direct_transition": "BMI_Obese_Observation"
+    },
+
+    "BMI_Obese_Observation": {
+      "type": "Observation",
+      "category": "vital-signs",
+      "unit": "kg/m2",
+      "codes": [
+        { "system": "LOINC", "code": "39156-5", "display": "Body mass index (BMI) [Ratio]" }
+      ],
+      "range": { "low": 30, "high": 42 },
+      "direct_transition": "Hypothyroid_Chance"
+    },
+
+    "BMI_NonObese_Observation": {
+      "type": "Observation",
+      "category": "vital-signs",
+      "unit": "kg/m2",
+      "codes": [
+        { "system": "LOINC", "code": "39156-5", "display": "Body mass index (BMI) [Ratio]" }
+      ],
+      "range": { "low": 21, "high": 29.9 },
+      "direct_transition": "Hypothyroid_Chance"
+    },
+
+    "Hypothyroid_Chance": {
+      "type": "Simple",
+      "remarks": ["Hypothyroidism prevalence modeled at 8% — a reversible secondary cause of high LDL."],
+      "distributed_transition": [
+        { "distribution": 0.08, "transition": "Hypothyroid_Onset" },
+        { "distribution": 0.92, "transition": "Malnutrition_Chance" }
+      ]
+    },
+
+    "Hypothyroid_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "40930008", "display": "Hypothyroidism" }
+      ],
+      "direct_transition": "Set_Hypothyroid"
+    },
+
+    "Set_Hypothyroid": {
+      "type": "SetAttribute",
+      "attribute": "hypothyroid",
+      "value": true,
+      "direct_transition": "Malnutrition_Chance"
+    },
+
+    "Malnutrition_Chance": {
+      "type": "Simple",
+      "remarks": [
+        "Malnutrition prevalence modeled at 10%. Serum albumin is measured for ALL patients;",
+        "malnourished patients get a low value, others a normal value."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.10, "transition": "Malnutrition_Onset" },
+        { "distribution": 0.90, "transition": "Albumin_Normal_Observation" }
+      ]
+    },
+
+    "Malnutrition_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "2492009", "display": "Nutritional disorder" }
+      ],
+      "direct_transition": "Set_Malnourished"
+    },
+
+    "Set_Malnourished": {
+      "type": "SetAttribute",
+      "attribute": "malnourished",
+      "value": true,
+      "remarks": ["Malnutrition lowers serum cholesterol/LDL (reverse epidemiology)."],
+      "direct_transition": "Albumin_Low_Observation"
+    },
+
+    "Albumin_Low_Observation": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "g/dL",
+      "codes": [
+        { "system": "LOINC", "code": "1751-7", "display": "Albumin [Mass/volume] in Serum or Plasma" }
+      ],
+      "range": { "low": 2.2, "high": 3.3 },
+      "direct_transition": "CKD_Chance"
+    },
+
+    "Albumin_Normal_Observation": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "g/dL",
+      "codes": [
+        { "system": "LOINC", "code": "1751-7", "display": "Albumin [Mass/volume] in Serum or Plasma" }
+      ],
+      "range": { "low": 3.6, "high": 4.8 },
+      "direct_transition": "CKD_Chance"
+    },
+
+    "CKD_Chance": {
+      "type": "Simple",
+      "remarks": ["Chronic kidney disease prevalence modeled at 15% (comorbidity covariate)."],
+      "distributed_transition": [
+        { "distribution": 0.15, "transition": "CKD_Onset" },
+        { "distribution": 0.85, "transition": "Smoking_Chance" }
+      ]
+    },
+
+    "CKD_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "709044004", "display": "Chronic kidney disease" }
+      ],
+      "direct_transition": "Smoking_Chance"
+    },
+
+    "Smoking_Chance": {
+      "type": "Simple",
+      "remarks": ["Current smoking prevalence modeled at 35%."],
+      "distributed_transition": [
+        { "distribution": 0.35, "transition": "Current_Smoker_Observation" },
+        { "distribution": 0.65, "transition": "Never_Smoker_Observation" }
+      ]
+    },
+
+    "Current_Smoker_Observation": {
+      "type": "Observation",
+      "category": "social-history",
+      "codes": [
+        { "system": "LOINC", "code": "72166-2", "display": "Tobacco smoking status" }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT", "code": "881661000124108", "display": "Smokes cigarette daily"
+      },
+      "direct_transition": "FH_Chance"
+    },
+
+    "Never_Smoker_Observation": {
+      "type": "Observation",
+      "category": "social-history",
+      "codes": [
+        { "system": "LOINC", "code": "72166-2", "display": "Tobacco smoking status" }
+      ],
+      "value_code": {
+        "system": "SNOMED-CT", "code": "221000119102", "display": "Never smoked any substance"
+      },
+      "direct_transition": "FH_Chance"
+    },
+
+    "FH_Chance": {
+      "type": "Simple",
+      "remarks": ["Familial hypercholesterolemia prevalence modeled at 4% — dominant LDL driver."],
+      "distributed_transition": [
+        { "distribution": 0.04, "transition": "FH_Onset" },
+        { "distribution": 0.96, "transition": "LDL_Tier_Branch" }
+      ]
+    },
+
+    "FH_Onset": {
+      "type": "ConditionOnset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "398036000", "display": "Familial hypercholesterolemia" }
+      ],
+      "direct_transition": "Set_FH"
+    },
+
+    "Set_FH": {
+      "type": "SetAttribute",
+      "attribute": "fh",
+      "value": true,
+      "direct_transition": "LDL_Tier_Branch"
+    },
+
+    "LDL_Tier_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "Assign the preoperative LDL tier by covariate PRIORITY (first match wins):",
+        "  FH            -> very high (genetic, dominates even over malnutrition)",
+        "  malnourished  -> low (reverse epidemiology)",
+        "  metabolic OR hypothyroid -> high",
+        "  else          -> moderate"
+      ],
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "fh", "operator": "==", "value": true }, "transition": "Preop_LDL_VeryHigh" },
+        { "condition": { "condition_type": "Attribute", "attribute": "malnourished", "operator": "==", "value": true }, "transition": "Preop_LDL_Low" },
+        { "condition": { "condition_type": "Attribute", "attribute": "metabolic", "operator": "==", "value": true }, "transition": "Preop_LDL_High" },
+        { "condition": { "condition_type": "Attribute", "attribute": "hypothyroid", "operator": "==", "value": true }, "transition": "Preop_LDL_High" },
+        { "transition": "Preop_LDL_Moderate" }
+      ]
+    },
+
+    "Preop_LDL_VeryHigh": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "range": { "low": 185, "high": 235 },
+      "direct_transition": "Set_HighRisk_True"
+    },
+
+    "Preop_LDL_High": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "range": { "low": 135, "high": 168 },
+      "direct_transition": "Set_HighRisk_True"
+    },
+
+    "Preop_LDL_Moderate": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "range": { "low": 95, "high": 130 },
+      "direct_transition": "Set_HighRisk_False"
+    },
+
+    "Preop_LDL_Low": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "range": { "low": 55, "high": 92 },
+      "direct_transition": "Set_HighRisk_False"
+    },
+
+    "Set_HighRisk_True": {
+      "type": "SetAttribute",
+      "attribute": "high_risk_group",
+      "value": true,
+      "direct_transition": "Preop_Statin_Decision"
+    },
+
+    "Set_HighRisk_False": {
+      "type": "SetAttribute",
+      "attribute": "high_risk_group",
+      "value": false,
+      "direct_transition": "Preop_Statin_Decision"
+    },
+
+    "Preop_Statin_Decision": {
+      "type": "Simple",
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "high_risk_group", "operator": "==", "value": true }, "transition": "Preop_Statin_Chance_High" },
+        { "transition": "Preop_Statin_Chance_Std" }
+      ]
+    },
+
+    "Preop_Statin_Chance_High": {
+      "type": "Simple",
+      "remarks": ["High-risk (FH or high LDL) preop statin use 82%, mostly high-intensity-capable."],
+      "distributed_transition": [
+        { "distribution": 0.82, "transition": "Preop_Statin_Intensity_High" },
+        { "distribution": 0.18, "transition": "Preop_Ezetimibe_Decision" }
+      ]
+    },
+
+    "Preop_Statin_Chance_Std": {
+      "type": "Simple",
+      "remarks": ["Standard-risk preop statin use 52%, mostly low/moderate-intensity."],
+      "distributed_transition": [
+        { "distribution": 0.52, "transition": "Preop_Statin_Intensity_Std" },
+        { "distribution": 0.48, "transition": "Preop_Ezetimibe_Decision" }
+      ]
+    },
+
+    "Preop_Statin_Intensity_High": {
+      "type": "Simple",
+      "remarks": ["High-risk patients: 85% high-intensity-capable ingredient, 15% low/moderate anyway (real-world intensity choice is not perfectly risk-stratified)."],
+      "distributed_transition": [
+        { "distribution": 0.85, "transition": "Preop_Statin_Order_HighIntensity" },
+        { "distribution": 0.15, "transition": "Preop_Statin_Order_LowModIntensity" }
+      ]
+    },
+
+    "Preop_Statin_Intensity_Std": {
+      "type": "Simple",
+      "remarks": ["Standard-risk patients: mostly low/moderate-intensity, 25% high-intensity-capable anyway."],
+      "distributed_transition": [
+        { "distribution": 0.25, "transition": "Preop_Statin_Order_HighIntensity" },
+        { "distribution": 0.75, "transition": "Preop_Statin_Order_LowModIntensity" }
+      ]
+    },
+
+    "Preop_Statin_Order_HighIntensity": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "statin_rx",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "RxNorm", "code": "83367", "display": "atorvastatin" }
+      ],
+      "remarks": ["Chronic statin — not ended (continues as long-term lipid therapy). High-intensity-capable ingredient (pad-ler-ldl-desc cohort 5 / statin_high_intensity_capable)."],
+      "direct_transition": "Set_Statin_Intensity_High_Preop"
+    },
+
+    "Set_Statin_Intensity_High_Preop": {
+      "type": "SetAttribute",
+      "attribute": "statin_intensity",
+      "value": "high",
+      "direct_transition": "Set_OnStatinPreop"
+    },
+
+    "Preop_Statin_Order_LowModIntensity": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "statin_rx",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "RxNorm", "code": "36567", "display": "simvastatin" }
+      ],
+      "remarks": ["Chronic statin — not ended (continues as long-term lipid therapy). Low/moderate-intensity-only ingredient (pad-ler-ldl-desc cohort 6 / statin_low_moderate_intensity_only)."],
+      "direct_transition": "Set_Statin_Intensity_LowMod_Preop"
+    },
+
+    "Set_Statin_Intensity_LowMod_Preop": {
+      "type": "SetAttribute",
+      "attribute": "statin_intensity",
+      "value": "low_moderate",
+      "direct_transition": "Set_OnStatinPreop"
+    },
+
+    "Set_OnStatinPreop": {
+      "type": "SetAttribute",
+      "attribute": "on_statin_preop",
+      "value": true,
+      "direct_transition": "Preop_Ezetimibe_Decision"
+    },
+
+    "Preop_Ezetimibe_Decision": {
+      "type": "Simple",
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "high_risk_group", "operator": "==", "value": true }, "transition": "Preop_Ezetimibe_Chance_High" },
+        { "transition": "Preop_Ezetimibe_Chance_Std" }
+      ]
+    },
+
+    "Preop_Ezetimibe_Chance_High": {
+      "type": "Simple",
+      "distributed_transition": [
+        { "distribution": 0.20, "transition": "Preop_Ezetimibe_Order" },
+        { "distribution": 0.80, "transition": "Preop_PCSK9_Decision" }
+      ]
+    },
+
+    "Preop_Ezetimibe_Chance_Std": {
+      "type": "Simple",
+      "distributed_transition": [
+        { "distribution": 0.04, "transition": "Preop_Ezetimibe_Order" },
+        { "distribution": 0.96, "transition": "Preop_PCSK9_Decision" }
+      ]
+    },
+
+    "Preop_Ezetimibe_Order": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "ezetimibe_rx",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "RxNorm", "code": "341248", "display": "ezetimibe" }
+      ],
+      "direct_transition": "Preop_PCSK9_Decision"
+    },
+
+    "Preop_PCSK9_Decision": {
+      "type": "Simple",
+      "remarks": ["Preop PCSK9 inhibitor use concentrated in FH patients only."],
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "fh", "operator": "==", "value": true }, "transition": "Preop_PCSK9_Chance_FH" },
+        { "transition": "Preop_Meds_Done" }
+      ]
+    },
+
+    "Preop_PCSK9_Chance_FH": {
+      "type": "Simple",
+      "distributed_transition": [
+        { "distribution": 0.30, "transition": "Preop_PCSK9_Order" },
+        { "distribution": 0.70, "transition": "Preop_Meds_Done" }
+      ]
+    },
+
+    "Preop_PCSK9_Order": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "pcsk9_rx",
+      "reason": "FH_Onset",
+      "codes": [
+        { "system": "RxNorm", "code": "1665684", "display": "evolocumab" }
+      ],
+      "direct_transition": "Preop_Meds_Done"
+    },
+
+    "Preop_Meds_Done": {
+      "type": "Simple",
+      "direct_transition": "End_PAD_Diagnosis_Encounter"
+    },
+
+    "End_PAD_Diagnosis_Encounter": {
+      "type": "EncounterEnd",
+      "direct_transition": "Index_Treatment_Branch"
+    },
+
+    "Index_Treatment_Branch": {
+      "type": "Simple",
+      "remarks": [
+        "50/50 open vs endovascular LER. Both are index revascularizations (all module",
+        "patients are revascularized — that is the cohort inclusion). No medical-only arm."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.50, "transition": "Open_Workup_Delay" },
+        { "distribution": 0.50, "transition": "Endo_Workup_Delay" }
+      ]
+    },
+
+    "Open_Workup_Delay": {
+      "type": "Delay",
+      "remarks": ["Time from PAD evaluation to open surgery: 1-6 months."],
+      "range": { "low": 30, "high": 180, "unit": "days" },
+      "direct_transition": "Open_Surgical_Admission"
+    },
+
+    "Open_Surgical_Admission": {
+      "type": "Encounter",
+      "encounter_class": "inpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "32485007", "display": "Hospital admission" }
+      ],
+      "direct_transition": "Open_Procedure_Select"
+    },
+
+    "Open_Procedure_Select": {
+      "type": "Simple",
+      "remarks": [
+        "Five open LER procedure types (20% each), all descendants of the shared open",
+        "target ancestors 4236706 (arterial bypass of lower limb) / 4225375 (endarterectomy",
+        "of lower limb). Includes the aorto-femoral (suprainguinal inflow) variant."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.20, "transition": "Femoro_Popliteal_Bypass" },
+        { "distribution": 0.20, "transition": "Femoral_Endarterectomy" },
+        { "distribution": 0.20, "transition": "Aorto_Bifemoral_Bypass" },
+        { "distribution": 0.20, "transition": "Femoro_Tibial_Bypass" },
+        { "distribution": 0.20, "transition": "Femorofemoral_Crossover_Bypass" }
+      ]
+    },
+
+    "Femoro_Popliteal_Bypass": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "112828007", "display": "Femoral-popliteal artery bypass graft" }
+      ],
+      "duration": { "low": 2, "high": 5, "unit": "hours" },
+      "direct_transition": "Open_Postop_Stay_Delay"
+    },
+
+    "Femoral_Endarterectomy": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "16589005", "display": "Femoral endarterectomy" }
+      ],
+      "duration": { "low": 1, "high": 3, "unit": "hours" },
+      "direct_transition": "Open_Postop_Stay_Delay"
+    },
+
+    "Aorto_Bifemoral_Bypass": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "405482000", "display": "Aorto-femoral arterial bypass" }
+      ],
+      "duration": { "low": 3, "high": 6, "unit": "hours" },
+      "direct_transition": "Open_Postop_Stay_Delay"
+    },
+
+    "Femoro_Tibial_Bypass": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "47575002", "display": "Femorotibial vascular bypass, anterior or posterior" }
+      ],
+      "duration": { "low": 2, "high": 5, "unit": "hours" },
+      "direct_transition": "Open_Postop_Stay_Delay"
+    },
+
+    "Femorofemoral_Crossover_Bypass": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "233380006", "display": "Femorofemoral crossover bypass graft" }
+      ],
+      "duration": { "low": 2, "high": 4, "unit": "hours" },
+      "direct_transition": "Open_Postop_Stay_Delay"
+    },
+
+    "Open_Postop_Stay_Delay": {
+      "type": "Delay",
+      "remarks": ["Inpatient stay after open LER: 3-7 days."],
+      "range": { "low": 3, "high": 7, "unit": "days" },
+      "direct_transition": "End_Open_Admission"
+    },
+
+    "End_Open_Admission": {
+      "type": "EncounterEnd",
+      "discharge_disposition": {
+        "system": "NUBC", "code": "01", "display": "Discharged to home care or self care (routine discharge)"
+      },
+      "direct_transition": "Postop_Followup_Q1_Delay"
+    },
+
+    "Endo_Workup_Delay": {
+      "type": "Delay",
+      "remarks": ["Time from PAD evaluation to endovascular revascularization: 1-6 months."],
+      "range": { "low": 30, "high": 180, "unit": "days" },
+      "direct_transition": "Endo_Procedure_Encounter"
+    },
+
+    "Endo_Procedure_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "outpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "11429006", "display": "Consultation" }
+      ],
+      "remarks": ["Endovascular LER is performed in an outpatient / same-day setting."],
+      "direct_transition": "Endo_Procedure_Select"
+    },
+
+    "Endo_Procedure_Select": {
+      "type": "Simple",
+      "remarks": [
+        "Endovascular LER by territory, all descendants of 4049825 (Limb revascularization):",
+        "  lower limb 60%, foot 25%, toe 15% (infrapopliteal/pedal endovascular work)."
+      ],
+      "distributed_transition": [
+        { "distribution": 0.60, "transition": "Endo_LowerLimb_Revasc" },
+        { "distribution": 0.25, "transition": "Endo_Foot_Revasc" },
+        { "distribution": 0.15, "transition": "Endo_Toe_Revasc" }
+      ]
+    },
+
+    "Endo_LowerLimb_Revasc": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "233505002", "display": "Revascularization of lower limb" }
+      ],
+      "duration": { "low": 1, "high": 3, "unit": "hours" },
+      "direct_transition": "End_Endo_Encounter"
+    },
+
+    "Endo_Foot_Revasc": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "233507005", "display": "Revascularization of foot" }
+      ],
+      "duration": { "low": 1, "high": 3, "unit": "hours" },
+      "direct_transition": "End_Endo_Encounter"
+    },
+
+    "Endo_Toe_Revasc": {
+      "type": "Procedure",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "233508000", "display": "Revascularization of toe" }
+      ],
+      "duration": { "low": 1, "high": 2, "unit": "hours" },
+      "direct_transition": "End_Endo_Encounter"
+    },
+
+    "End_Endo_Encounter": {
+      "type": "EncounterEnd",
+      "direct_transition": "Postop_Followup_Q1_Delay"
+    },
+
+    "Postop_Followup_Q1_Delay": {
+      "type": "Delay",
+      "remarks": [
+        "First post-operative lipid clinic ~1-3 months after revascularization. Escalation",
+        "decisions and the Q1 LDL are recorded within this encounter."
+      ],
+      "range": { "low": 45, "high": 90, "unit": "days" },
+      "direct_transition": "Followup_Q1_Encounter"
+    },
+
+    "Followup_Q1_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "outpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "185349003", "display": "Encounter for check up" }
+      ],
+      "direct_transition": "Post_Index_Escalation"
+    },
+
+    "Post_Index_Escalation": {
+      "type": "Simple",
+      "remarks": [
+        "Guideline-directed lipid intensification after revascularization (a secondary-",
+        "prevention indication). Statin-naive patients usually start a statin; already-",
+        "treated patients may intensify (add ezetimibe). Patients on adequate therapy are",
+        "flagged ldl_controlled_postop -> drives the achieved post-op LDL band."
+      ],
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "on_statin_preop", "operator": "==", "value": true }, "transition": "Escalation_OnStatin" },
+        { "transition": "Escalation_StatinNaive" }
+      ]
+    },
+
+    "Escalation_StatinNaive": {
+      "type": "Simple",
+      "remarks": ["Statin-naive: 75% start a statin post-revascularization; 25% remain untreated."],
+      "distributed_transition": [
+        { "distribution": 0.75, "transition": "Postop_Statin_Intensity_Decision" },
+        { "distribution": 0.25, "transition": "Set_Uncontrolled" }
+      ]
+    },
+
+    "Postop_Statin_Intensity_Decision": {
+      "type": "Simple",
+      "remarks": ["New post-op statin start: guideline-directed intensity choice skews high-intensity-capable for a secondary-prevention indication (revascularization), regardless of preop high_risk_group."],
+      "distributed_transition": [
+        { "distribution": 0.65, "transition": "Postop_Statin_Start_HighIntensity" },
+        { "distribution": 0.35, "transition": "Postop_Statin_Start_LowModIntensity" }
+      ]
+    },
+
+    "Postop_Statin_Start_HighIntensity": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "statin_rx",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "RxNorm", "code": "83367", "display": "atorvastatin" }
+      ],
+      "direct_transition": "Set_Statin_Intensity_High_Postop"
+    },
+
+    "Set_Statin_Intensity_High_Postop": {
+      "type": "SetAttribute",
+      "attribute": "statin_intensity",
+      "value": "high",
+      "direct_transition": "Set_Controlled"
+    },
+
+    "Postop_Statin_Start_LowModIntensity": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "statin_rx",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "RxNorm", "code": "36567", "display": "simvastatin" }
+      ],
+      "direct_transition": "Set_Statin_Intensity_LowMod_Postop"
+    },
+
+    "Set_Statin_Intensity_LowMod_Postop": {
+      "type": "SetAttribute",
+      "attribute": "statin_intensity",
+      "value": "low_moderate",
+      "direct_transition": "Set_Controlled"
+    },
+
+    "Escalation_OnStatin": {
+      "type": "Simple",
+      "remarks": ["Already on a statin: 45% intensify by adding ezetimibe; all end up controlled."],
+      "distributed_transition": [
+        { "distribution": 0.45, "transition": "Postop_Add_Ezetimibe" },
+        { "distribution": 0.55, "transition": "Set_Controlled" }
+      ]
+    },
+
+    "Postop_Add_Ezetimibe": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "ezetimibe_rx",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "RxNorm", "code": "341248", "display": "ezetimibe" }
+      ],
+      "direct_transition": "Set_Controlled"
+    },
+
+    "Set_Controlled": {
+      "type": "SetAttribute",
+      "attribute": "ldl_controlled_postop",
+      "value": true,
+      "direct_transition": "FH_Postop_PCSK9_Decision"
+    },
+
+    "Set_Uncontrolled": {
+      "type": "SetAttribute",
+      "attribute": "ldl_controlled_postop",
+      "value": false,
+      "direct_transition": "FH_Postop_PCSK9_Decision"
+    },
+
+    "FH_Postop_PCSK9_Decision": {
+      "type": "Simple",
+      "remarks": ["FH patients not already on a PCSK9i may add one post-revascularization."],
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "fh", "operator": "==", "value": true }, "transition": "FH_Postop_PCSK9_Chance" },
+        { "transition": "LDL_Q1_Decision" }
+      ]
+    },
+
+    "FH_Postop_PCSK9_Chance": {
+      "type": "Simple",
+      "distributed_transition": [
+        { "distribution": 0.40, "transition": "Postop_PCSK9_Start" },
+        { "distribution": 0.60, "transition": "LDL_Q1_Decision" }
+      ]
+    },
+
+    "Postop_PCSK9_Start": {
+      "type": "MedicationOrder",
+      "assign_to_attribute": "pcsk9_rx",
+      "reason": "FH_Onset",
+      "codes": [
+        { "system": "RxNorm", "code": "1665684", "display": "evolocumab" }
+      ],
+      "direct_transition": "LDL_Q1_Decision"
+    },
+
+    "LDL_Q1_Decision": {
+      "type": "Simple",
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "ldl_controlled_postop", "operator": "==", "value": true }, "transition": "LDL_Q1_Controlled" },
+        { "transition": "LDL_Q1_Uncontrolled" }
+      ]
+    },
+
+    "LDL_Q1_Controlled": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "remarks": ["Q1 (~1-3 mo): early partial response on new/continued therapy."],
+      "range": { "low": 75, "high": 115 },
+      "direct_transition": "End_Followup_Q1"
+    },
+
+    "LDL_Q1_Uncontrolled": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "range": { "low": 120, "high": 165 },
+      "direct_transition": "End_Followup_Q1"
+    },
+
+    "End_Followup_Q1": {
+      "type": "EncounterEnd",
+      "direct_transition": "Postop_Followup_Q2_Delay"
+    },
+
+    "Postop_Followup_Q2_Delay": {
+      "type": "Delay",
+      "range": { "low": 85, "high": 95, "unit": "days" },
+      "direct_transition": "Followup_Q2_Encounter"
+    },
+
+    "Followup_Q2_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "outpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "185349003", "display": "Encounter for check up" }
+      ],
+      "direct_transition": "LDL_Q2_Decision"
+    },
+
+    "LDL_Q2_Decision": {
+      "type": "Simple",
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "ldl_controlled_postop", "operator": "==", "value": true }, "transition": "LDL_Q2_Controlled" },
+        { "transition": "LDL_Q2_Uncontrolled" }
+      ]
+    },
+
+    "LDL_Q2_Controlled": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "remarks": ["Q2 (~6 mo): approaching goal."],
+      "range": { "low": 65, "high": 100 },
+      "direct_transition": "End_Followup_Q2"
+    },
+
+    "LDL_Q2_Uncontrolled": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "range": { "low": 120, "high": 165 },
+      "direct_transition": "End_Followup_Q2"
+    },
+
+    "End_Followup_Q2": {
+      "type": "EncounterEnd",
+      "direct_transition": "Postop_Followup_Q3_Delay"
+    },
+
+    "Postop_Followup_Q3_Delay": {
+      "type": "Delay",
+      "range": { "low": 85, "high": 95, "unit": "days" },
+      "direct_transition": "Followup_Q3_Encounter"
+    },
+
+    "Followup_Q3_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "outpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "185349003", "display": "Encounter for check up" }
+      ],
+      "direct_transition": "LDL_Q3_Decision"
+    },
+
+    "LDL_Q3_Decision": {
+      "type": "Simple",
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "ldl_controlled_postop", "operator": "==", "value": true }, "transition": "LDL_Q3_Controlled" },
+        { "transition": "LDL_Q3_Uncontrolled" }
+      ]
+    },
+
+    "LDL_Q3_Controlled": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "remarks": ["Q3 (~9 mo): at/near goal (sustained)."],
+      "range": { "low": 60, "high": 95 },
+      "direct_transition": "End_Followup_Q3"
+    },
+
+    "LDL_Q3_Uncontrolled": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "range": { "low": 118, "high": 162 },
+      "direct_transition": "End_Followup_Q3"
+    },
+
+    "End_Followup_Q3": {
+      "type": "EncounterEnd",
+      "direct_transition": "Postop_Followup_Q4_Delay"
+    },
+
+    "Postop_Followup_Q4_Delay": {
+      "type": "Delay",
+      "range": { "low": 85, "high": 95, "unit": "days" },
+      "direct_transition": "Followup_Q4_Encounter"
+    },
+
+    "Followup_Q4_Encounter": {
+      "type": "Encounter",
+      "encounter_class": "outpatient",
+      "reason": "PAD_Onset",
+      "codes": [
+        { "system": "SNOMED-CT", "code": "185349003", "display": "Encounter for check up" }
+      ],
+      "direct_transition": "LDL_Q4_Decision"
+    },
+
+    "LDL_Q4_Decision": {
+      "type": "Simple",
+      "remarks": [
+        "Q4 (~12 mo, the window pad-ler-ldl-desc's Analysis B actually reads, 275-455d).",
+        "Controlled patients split by statin_intensity: high-intensity-capable ingredients",
+        "(atorvastatin/rosuvastatin) can genuinely cross the <55 mg/dL goal threshold used",
+        "throughout pad-ler-ldl-desc; low/moderate-intensity-only ingredients (or ezetimibe-",
+        "only response, statin_intensity unset) improve LDL but rarely reach that threshold —",
+        "this distinction is the reason cohorts 5/6 (statin intensity) exist."
+      ],
+      "conditional_transition": [
+        { "condition": { "condition_type": "Attribute", "attribute": "ldl_controlled_postop", "operator": "==", "value": false }, "transition": "LDL_Q4_Uncontrolled" },
+        { "condition": { "condition_type": "Attribute", "attribute": "statin_intensity", "operator": "==", "value": "high" }, "transition": "LDL_Q4_Controlled_HighIntensity" },
+        { "transition": "LDL_Q4_Controlled_LowModIntensity" }
+      ]
+    },
+
+    "LDL_Q4_Controlled_HighIntensity": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "remarks": ["Q4 (~12 mo): at goal on a high-intensity-capable statin — genuinely crosses <55."],
+      "range": { "low": 40, "high": 58 },
+      "direct_transition": "End_Followup_Q4"
+    },
+
+    "LDL_Q4_Controlled_LowModIntensity": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "remarks": ["Q4 (~12 mo): improved but rarely at the aggressive <55 goal on low/moderate-intensity therapy alone."],
+      "range": { "low": 58, "high": 92 },
+      "direct_transition": "End_Followup_Q4"
+    },
+
+    "LDL_Q4_Uncontrolled": {
+      "type": "Observation",
+      "category": "laboratory",
+      "unit": "mg/dL",
+      "codes": [
+        { "system": "LOINC", "code": "13457-7", "display": "Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation" }
+      ],
+      "range": { "low": 118, "high": 162 },
+      "direct_transition": "End_Followup_Q4"
+    },
+
+    "End_Followup_Q4": {
+      "type": "EncounterEnd",
+      "direct_transition": "Terminal"
+    },
+
+    "Terminal": {
+      "type": "Terminal"
+    }
+  }
+}
