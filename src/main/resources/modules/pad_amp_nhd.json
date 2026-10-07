@@ -548,7 +548,7 @@
       ],
       "distributed_transition": [
         { "distribution": 0.65, "transition": "HTN_Onset" },
-        { "distribution": 0.35, "transition": "FS_Dep_Check" }
+        { "distribution": 0.35, "transition": "CAD_Check" }
       ]
     },
 
@@ -561,6 +561,103 @@
         { "system": "SNOMED-CT", "code": "38341003", "display": "Hypertensive disorder" }
       ],
       "assign_to_attribute": "htn",
+      "direct_transition": "CAD_Check"
+    },
+
+    "CAD_Check": {
+      "type": "Simple",
+      "remarks": [
+        "VQI-FS COMPONENT: Coronary artery disease — 1 pt.",
+        "Prevalence in this cohort: ~15% (moderate in elderly vascular patients).",
+        "RESEARCHER_ADJUSTS: change distribution to match local population."
+      ],
+      "conditional_transition": [
+        {
+          "distribution": 0.15,
+          "transition": "CAD_Onset"
+        },
+        {
+          "transition": "Renal_Impairment_Check"
+        }
+      ]
+    },
+
+    "CAD_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Coronary artery disease SNOMED 414545008 → OMOP 4185932 ischemic_heart_disease (verified 2026-06-13).",
+        "CORRECTED 2026-07-14: originally used 53741008 → 317576, which was never in catalog.yaml.",
+        "Aligned with canonical ischemic_heart_disease concept used in pad-oler-amp-desc and pad-oler-macce-val."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "414545008", "display": "Coronary arteriosclerosis" }
+      ],
+      "direct_transition": "Renal_Impairment_Check"
+    },
+
+    "Renal_Impairment_Check": {
+      "type": "Simple",
+      "remarks": [
+        "VQI-FS COMPONENT: Renal impairment / chronic kidney disease — 1 pt.",
+        "Prevalence in this cohort: ~10% (significant in elderly/diabetic populations).",
+        "RESEARCHER_ADJUSTS: change distribution to match local population."
+      ],
+      "conditional_transition": [
+        {
+          "distribution": 0.10,
+          "transition": "Renal_Impairment_Onset"
+        },
+        {
+          "transition": "Underweight_Check"
+        }
+      ]
+    },
+
+    "Renal_Impairment_Onset": {
+      "type": "ConditionOnset",
+      "remarks": [
+        "Chronic kidney disease SNOMED 709044004 → OMOP 46271022 (verified 2026-06-28)."
+      ],
+      "codes": [
+        { "system": "SNOMED-CT", "code": "709044004", "display": "Chronic kidney disease" }
+      ],
+      "direct_transition": "Underweight_Check"
+    },
+
+    "Underweight_Check": {
+      "type": "Simple",
+      "remarks": [
+        "VQI-FS COMPONENT: Underweight (BMI <19) — 1 pt.",
+        "Prevalence in this cohort: ~8% (low in general population, more common in advanced illness).",
+        "RESEARCHER_ADJUSTS: change distribution to match local population."
+      ],
+      "conditional_transition": [
+        {
+          "distribution": 0.08,
+          "transition": "Underweight_Onset"
+        },
+        {
+          "transition": "FS_Dep_Check"
+        }
+      ]
+    },
+
+    "Underweight_Onset": {
+      "type": "VitalSign",
+      "remarks": [
+        "VQI-FS COMPONENT: Underweight (BMI <18.5) — 1 pt.",
+        "CORRECTED 2026-07-14: replaced diagnosis proxy observation (SNOMED 248342006 → 435372)",
+        "with real weight measurement (LOINC 29463-7 → OMOP 3025315). Height is already",
+        "captured in synthea module via demographic states. The analysis pipeline (R/risk_score_pipeline.R)",
+        "computes BMI from weight + height and thresholds on BMI < 18.5.",
+        "Vital sign: weight in kg, with unit conversion applied by Synthea →kg."
+      ],
+      "vital_sign": "Weight",
+      "unit": "kg",
+      "range": {
+        "low": 35,
+        "high": 50
+      },
       "direct_transition": "FS_Dep_Check"
     },
 
